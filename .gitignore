@@ -20,6 +20,7 @@ __pycache__/
 *.py[cod]
 
 node_modules/
+.npm-cache/
 dist/
 build/
 .vite/
@@ -30,5 +31,6 @@ storage/
 uploads/
 exports/
 tmp/
+.tmp/
 logs/
 *.log

@@ -15,5 +15,6 @@ pypdf
 PyMuPDF
 pandas
 openpyxl
+rich
 pytest
 pytest-asyncio

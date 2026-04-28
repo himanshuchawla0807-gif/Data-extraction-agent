@@ -1,0 +1,48 @@
+/* Typing text container */
+.typing-text-container {
+  display: inline-block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+/* Cursor container */
+.cursor-container {
+  display: inline-flex;
+  position: relative;
+  margin-left: 2px;
+}
+
+/* Typing cursor */
+.typing-cursor {
+  display: inline-block;
+  color: #3b82f6;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 1px;
+}
+
+.typing-cursor.blink {
+  animation: cursorBlink 0.8s ease-in-out infinite;
+}
+
+@keyframes cursorBlink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Character animation with blur effect */
+.typing-text-container span {
+  display: inline;
+  white-space: pre-wrap;
+}
+
+
+
+
+

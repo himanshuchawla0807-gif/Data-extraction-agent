@@ -1,0 +1,351 @@
+/*
+ * ⚠️ CRITICAL: The .pdf-viewer-canvas-container height fix (flex:1 !important)
+ * has been applied multiple times. DO NOT change it back to calc() or fixed height.
+ * See line ~145 for the fix. The container must use flex:1 to fill remaining space.
+ */
+
+.pdf-viewer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9998;
+}
+
+.pdf-viewer-sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 700px;
+    height: 100vh;
+    background: white;
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+    z-index: 9999;
+    display: flex;
+    flex-direction: row;
+}
+
+/* Thumbnail Panel */
+.pdf-viewer-thumbnails {
+    width: 120px;
+    overflow-y: auto;
+    border-right: 1px solid #e5e7eb;
+    background: #f9fafb;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    flex-shrink: 0;
+}
+
+.thumbnail-item {
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    padding: 4px;
+    transition: all 0.2s;
+    position: relative;
+    background: white;
+}
+
+.thumbnail-item.active {
+    border-color: #3b82f6;
+    background: #eff6ff;
+}
+
+.thumbnail-item img {
+    width: 100%;
+    display: block;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.thumbnail-item span {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+}
+
+/* Main Content Area */
+.pdf-viewer-main {
+    /* ⚠️ CRITICAL: This is the flex parent for header, canvas-container, and controls */
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-width: 0;
+    height: 100% !important;
+    /* Take full height of sidebar */
+    min-height: 0 !important;
+    /* Allow flex children to shrink */
+    overflow: hidden;
+}
+
+.pdf-viewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+    gap: 12px;
+    flex-shrink: 0;
+    /* ✅ Prevent shrinking */
+    height: 56px;
+    /* ✅ Fixed height */
+    box-sizing: border-box;
+}
+
+.pdf-viewer-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    max-width: 280px;
+}
+
+.pdf-viewer-page-indicator {
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+    background: #e5e7eb;
+    padding: 4px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.pdf-viewer-header button {
+    padding: 8px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.pdf-viewer-header button:hover {
+    background: #e5e7eb;
+}
+
+.thumbnail-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4b5563;
+}
+
+.thumbnail-toggle-btn:hover {
+    color: #1f2937;
+}
+
+.pdf-viewer-canvas-container {
+    /* ⚠️ CRITICAL FIX - DO NOT MODIFY WITHOUT TESTING ⚠️ */
+    /* Uses flex:1 to fill ALL remaining space after header(56px) and controls(48px) */
+    /* The !important ensures this cannot be overridden by any other styles */
+    flex: 1 !important;
+    min-height: 0 !important;
+    /* Required for flex children to shrink properly */
+    max-height: none !important;
+    /* Prevent any max-height from cutting off content */
+    height: auto !important;
+    /* Let flexbox control height, not fixed values */
+    overflow: hidden;
+    background: #f3f4f6;
+    position: relative;
+}
+
+/* Virtualized List Styling */
+.pdf-virtualized-list {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+
+.pdf-virtualized-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.pdf-virtualized-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.pdf-virtualized-list::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.pdf-virtualized-list::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Individual Page Container */
+.pdf-page-container {
+    padding: 12px 24px;
+    background: #f3f4f6;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.pdf-page-wrapper {
+    position: relative;
+    display: inline-block;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    background: white;
+}
+
+.pdf-page-wrapper canvas:first-child {
+    display: block;
+}
+
+/* Text Layer & Highlight Overlay */
+.highlight-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+.text-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    line-height: 1;
+    pointer-events: auto;
+    opacity: 0;
+    /* Production: hidden text layer, native selection still works */
+}
+
+.text-layer span {
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+    color: transparent;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.chunk-banner {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #92400e;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 50;
+    width: max-content;
+    pointer-events: none;
+}
+
+.pdf-loading-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 16px;
+    color: #6b7280;
+}
+
+.pdf-viewer-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 16px;
+    border-top: 1px solid #e5e7eb;
+    background: white;
+    flex-shrink: 0;
+    /* ✅ Prevent shrinking */
+    height: 48px;
+    /* ✅ Fixed height */
+    box-sizing: border-box;
+}
+
+.pdf-viewer-controls button {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pdf-viewer-controls button:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+}
+
+.pdf-viewer-controls .zoom-level {
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    min-width: 50px;
+    text-align: center;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .pdf-viewer-sidebar {
+        width: 100vw;
+        flex-direction: column;
+    }
+
+    .pdf-viewer-thumbnails {
+        width: 100%;
+        height: 100px;
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .thumbnail-item {
+        width: 80px;
+        flex-shrink: 0;
+    }
+
+    .pdf-page-container {
+        padding: 8px 12px;
+    }
+
+    .pdf-viewer-header h3 {
+        max-width: 150px;
+    }
+
+    .pdf-viewer-page-indicator {
+        font-size: 11px;
+        padding: 3px 8px;
+    }
+}
+
+/* Large screens - wider sidebar */
+@media (min-width: 1400px) {
+    .pdf-viewer-sidebar {
+        width: 800px;
+    }
+
+    .pdf-viewer-header h3 {
+        max-width: 400px;
+    }
+}

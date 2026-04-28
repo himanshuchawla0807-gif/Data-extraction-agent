@@ -1,0 +1,151 @@
+/* TypewriterMarkdown Styles */
+
+.typewriter-container {
+    line-height: 1.65;
+    word-wrap: break-word;
+    position: relative;
+}
+
+/* Inline Spinner - follows the text flow */
+.tw-inline-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 3px;
+    vertical-align: middle;
+    opacity: 1;
+    transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+}
+
+.tw-inline-spinner.tw-fading {
+    opacity: 0;
+    transform: scale(0.6);
+}
+
+.tw-spinner-svg {
+    animation: pulse-spin 0.8s ease-in-out infinite;
+}
+
+@keyframes pulse-spin {
+    0% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.1) rotate(180deg);
+        opacity: 0.7;
+    }
+
+    100% {
+        transform: scale(1) rotate(360deg);
+        opacity: 1;
+    }
+}
+
+/* React-markdown paragraph styling */
+.tw-paragraph {
+    margin: 0.3rem 0;
+}
+
+.tw-paragraph:first-child {
+    margin-top: 0;
+}
+
+.tw-paragraph:last-child {
+    margin-bottom: 0;
+}
+
+/* Bold text emphasis */
+.tw-bold {
+    font-weight: 600;
+    color: #111827;
+}
+
+/* Italic text */
+.tw-italic {
+    font-style: italic;
+}
+
+/* List styling */
+.tw-list,
+.tw-list-ordered {
+    margin: 0.4rem 0;
+    padding-left: 1.5rem;
+}
+
+.tw-list-item {
+    margin: 0.2rem 0;
+    line-height: 1.5;
+}
+
+/* Links */
+.tw-link {
+    color: #2563eb;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s;
+}
+
+.tw-link:hover {
+    border-bottom-color: #2563eb;
+}
+
+/* Inline code */
+.tw-code-inline {
+    background: #f3f4f6;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    font-size: 0.85em;
+    color: #dc2626;
+}
+
+/* Code blocks */
+.tw-code-block {
+    background: #1f2937;
+    color: #e5e7eb;
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    font-size: 0.85em;
+    margin: 0.4rem 0;
+}
+
+.tw-code-block code {
+    background: none;
+    padding: 0;
+    color: inherit;
+}
+
+/* Blockquote */
+.tw-quote {
+    border-left: 3px solid #d1d5db;
+    padding-left: 0.8rem;
+    margin: 0.4rem 0;
+    color: #6b7280;
+    font-style: italic;
+}
+
+/* Headers */
+.tw-h1 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0.6rem 0 0.4rem;
+    color: #111827;
+}
+
+.tw-h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0.5rem 0 0.3rem;
+    color: #1f2937;
+}
+
+.tw-h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0.4rem 0 0.25rem;
+    color: #374151;
+}
