@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 
 from .config import Settings, get_settings
 from .extraction_graph import run_extraction_workflow
+from .model_catalog import provider_catalog
 from .models import ExtractionRequest, ExtractionResponse
 from .storage import SessionStore
 
@@ -40,7 +41,8 @@ async def health(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
         "service": "data-extraction-agent-open",
         "status": "ok",
         "provider": settings.data_extraction_provider,
-        "model": settings.data_extraction_model,
+        "model": settings.effective_model(),
+        "reasoning_effort": settings.openai_reasoning_effort if settings.data_extraction_provider == "openai" else None,
         "provider_key_available": settings.provider_key_available(),
         "timestamp": datetime.now(UTC).isoformat(),
     }
@@ -48,10 +50,22 @@ async def health(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
 
 @router.get("/providers")
 async def providers() -> Dict[str, Any]:
-    return {
-        "providers": ["mock", "openai", "anthropic", "gemini", "openrouter"],
-        "default": "mock",
-    }
+    return provider_catalog()
+
+
+@router.post("/data-extraction/generate-title")
+async def generate_title(payload: Dict[str, Any]) -> Dict[str, Any]:
+    raw_text = (
+        payload.get("message")
+        or payload.get("query")
+        or payload.get("content")
+        or payload.get("title")
+        or "Data Extraction Session"
+    )
+    if isinstance(payload.get("messages"), list) and payload["messages"]:
+        raw_text = payload["messages"][-1].get("content") or raw_text
+    title = " ".join(str(raw_text).strip().split())[:80] or "Data Extraction Session"
+    return {"success": True, "title": title}
 
 
 @router.post("/sessions")
@@ -210,8 +224,24 @@ async def run_and_stream_extraction(
         })
 
     documents = store.extract_texts(session_id)
-    rows = await run_extraction_workflow(settings, documents, fields, query)
-    store.update_table_rows(session_id, rows)
+    try:
+        rows = await run_extraction_workflow(settings, documents, fields, query)
+        store.update_table_rows(session_id, rows)
+    except Exception as exc:
+        await send_ws(session_id, {
+            "type": "error",
+            "message": str(exc),
+            "provider": settings.data_extraction_provider,
+            "model": settings.effective_model(),
+        })
+        await send_ws(session_id, {
+            "type": "extraction_complete",
+            "message": "Extraction failed.",
+            "rows": [],
+            "fields": fields,
+            "error": str(exc),
+        })
+        return
 
     for row_index, row in enumerate(rows):
         file_name = row.get("Document Name", f"Document {row_index + 1}")

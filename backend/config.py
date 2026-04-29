@@ -27,14 +27,15 @@ class Settings(BaseSettings):
     data_extraction_model: str = "mock-extractor"
 
     openai_api_key: Optional[str] = None
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-5.5"
+    openai_reasoning_effort: Optional[str] = "medium"
     anthropic_api_key: Optional[str] = None
     anthropic_model: str = "claude-3-5-haiku-latest"
     google_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_model: str = "gemini-3.1-pro-preview"
     openrouter_api_key: Optional[str] = None
-    openrouter_model: str = "openai/gpt-4o-mini"
+    openrouter_model: str = ""
 
     storage_provider: str = "local"
     local_storage_dir: Path = Path("./storage")
@@ -59,8 +60,19 @@ class Settings(BaseSettings):
             return bool(self.openrouter_api_key)
         return False
 
+    def effective_model(self) -> str:
+        provider = self.data_extraction_provider.lower()
+        if provider == "openai":
+            return self.openai_model
+        if provider == "anthropic":
+            return self.anthropic_model
+        if provider in {"gemini", "google"}:
+            return self.gemini_model
+        if provider == "openrouter":
+            return self.openrouter_model
+        return self.data_extraction_model
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

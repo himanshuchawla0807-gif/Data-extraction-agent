@@ -9,6 +9,8 @@ import time
 import webbrowser
 from pathlib import Path
 
+from backend.model_catalog import MODEL_PRESETS, PROVIDER_ORDER
+
 ROOT = Path(__file__).resolve().parent
 ENV_PATH = ROOT / ".env"
 
@@ -23,19 +25,47 @@ LOGO = r"""
 """
 
 
-def write_env(provider: str, api_key: str) -> None:
+def choose_model(provider: str) -> dict:
+    presets = MODEL_PRESETS.get(provider, [])
+    if provider == "mock" or not presets:
+        return presets[0] if presets else {"model": ""}
+
+    print(f"\nChoose a {provider} model:")
+    for index, preset in enumerate(presets, start=1):
+        suffix = f" [{preset['model']}]" if preset.get("model") else ""
+        print(f"{index}. {preset['label']}{suffix}")
+
+    selected = input("Model [1]: ").strip() or "1"
+    try:
+        preset = presets[int(selected) - 1]
+    except (ValueError, IndexError):
+        preset = presets[0]
+
+    if preset.get("custom"):
+        model = input(f"OpenRouter model name ({preset['placeholder']}): ").strip()
+        return {**preset, "model": model}
+    return preset
+
+
+def write_env(provider: str, api_key: str, model_choice: dict) -> None:
     template = (ROOT / ".env.example").read_text(encoding="utf-8")
     values = {
         "DATA_EXTRACTION_PROVIDER": provider,
+        "DATA_EXTRACTION_MODEL": model_choice.get("model") or "mock-extractor",
     }
     if provider == "openai":
         values["OPENAI_API_KEY"] = api_key
+        values["OPENAI_MODEL"] = model_choice.get("model", "gpt-5.5")
+        values["OPENAI_REASONING_EFFORT"] = model_choice.get("reasoning_effort", "")
     elif provider == "anthropic":
         values["ANTHROPIC_API_KEY"] = api_key
+        values["ANTHROPIC_MODEL"] = model_choice.get("model", "claude-3-5-haiku-latest")
     elif provider == "gemini":
         values["GEMINI_API_KEY"] = api_key
+        values["GEMINI_MODEL"] = model_choice.get("model", "gemini-3.1-pro-preview")
     elif provider == "openrouter":
         values["OPENROUTER_API_KEY"] = api_key
+        values["OPENROUTER_MODEL"] = model_choice.get("model", "")
 
     lines = []
     for line in template.splitlines():
@@ -75,12 +105,10 @@ def start_processes() -> list[subprocess.Popen]:
 def main() -> int:
     print(LOGO)
     print("Choose an LLM provider:")
-    print("1. mock (no API key, recommended for first localhost test)")
-    print("2. openai")
-    print("3. anthropic")
-    print("4. gemini")
-    print("5. openrouter")
-    choices = {"1": "mock", "2": "openai", "3": "anthropic", "4": "gemini", "5": "openrouter"}
+    for index, name in enumerate(PROVIDER_ORDER, start=1):
+        suffix = " (no API key, recommended for first localhost test)" if name == "mock" else ""
+        print(f"{index}. {name}{suffix}")
+    choices = {str(index): name for index, name in enumerate(PROVIDER_ORDER, start=1)}
     provider = choices.get(input("Provider [1]: ").strip() or "1", "mock")
 
     api_key = ""
@@ -90,7 +118,8 @@ def main() -> int:
             print("No API key entered. Falling back to mock provider.")
             provider = "mock"
 
-    write_env(provider, api_key)
+    model_choice = choose_model(provider)
+    write_env(provider, api_key, model_choice)
     ensure_frontend_dependencies()
 
     print("Starting backend on http://localhost:8101")
@@ -114,4 +143,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

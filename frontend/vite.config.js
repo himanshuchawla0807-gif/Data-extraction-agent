@@ -1,16 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import eslint from 'vite-plugin-eslint';
 import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
-    eslint({
-      failOnWarning: false, // Don't fail build on warnings
-      failOnError: false,   // Don't fail build on errors (development only)
-    })
+    react()
   ],
   server: {
     host: '0.0.0.0',

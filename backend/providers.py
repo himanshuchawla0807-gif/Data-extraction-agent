@@ -76,11 +76,14 @@ class OpenAIProvider(BaseProvider):
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=self.settings.openai_api_key)
-        response = await client.chat.completions.create(
-            model=self.settings.openai_model,
-            messages=[{"role": "user", "content": self._prompt(documents, fields, query)}],
-            response_format={"type": "json_object"},
-        )
+        kwargs: Dict[str, Any] = {
+            "model": self.settings.openai_model,
+            "messages": [{"role": "user", "content": self._prompt(documents, fields, query)}],
+            "response_format": {"type": "json_object"},
+        }
+        if self.settings.openai_reasoning_effort:
+            kwargs["reasoning_effort"] = self.settings.openai_reasoning_effort
+        response = await client.chat.completions.create(**kwargs)
         raw = response.choices[0].message.content or "[]"
         return self._parse_rows(raw, documents, fields)
 
@@ -95,6 +98,8 @@ class OpenRouterProvider(BaseProvider):
             api_key=self.settings.openrouter_api_key,
             base_url="https://openrouter.ai/api/v1",
         )
+        if not self.settings.openrouter_model:
+            raise ProviderError("OPENROUTER_MODEL is required for the OpenRouter provider.")
         response = await client.chat.completions.create(
             model=self.settings.openrouter_model,
             messages=[{"role": "user", "content": self._prompt(documents, fields, query)}],
@@ -150,4 +155,3 @@ def get_provider(settings: Settings) -> BaseProvider:
     if provider == "openrouter":
         return OpenRouterProvider(settings)
     raise ProviderError(f"Unsupported provider: {settings.data_extraction_provider}")
-

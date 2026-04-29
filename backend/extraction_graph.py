@@ -44,18 +44,17 @@ async def run_extraction_workflow(
 
     try:
         from langgraph.graph import END, StateGraph
-
-        graph = StateGraph(ExtractionState)
-        graph.add_node("extract", extract_node)
-        graph.add_node("verify", verify_node)
-        graph.set_entry_point("extract")
-        graph.add_edge("extract", "verify")
-        graph.add_edge("verify", END)
-        app = graph.compile()
-        result = await app.ainvoke({"documents": documents, "fields": fields, "query": query})
-        return result.get("rows", [])
     except Exception:
         state = await extract_node({"documents": documents, "fields": fields, "query": query})
         verified = await verify_node(state)
         return verified.get("rows", [])
 
+    graph = StateGraph(ExtractionState)
+    graph.add_node("extract", extract_node)
+    graph.add_node("verify", verify_node)
+    graph.set_entry_point("extract")
+    graph.add_edge("extract", "verify")
+    graph.add_edge("verify", END)
+    app = graph.compile()
+    result = await app.ainvoke({"documents": documents, "fields": fields, "query": query})
+    return result.get("rows", [])
