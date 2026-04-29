@@ -9,7 +9,7 @@ Open-source data extraction agent for local document upload, grid/table review, 
 - Provider router for `mock`, `openai`, `anthropic`, `gemini`, and `openrouter`.
 - LangGraph-compatible extraction workflow with a fallback path if LangGraph is unavailable.
 - React/Vite frontend copied from the Oriplex data extraction table/grid experience.
-- CLI launcher that shows the Oriplex logo, asks for provider/API key, starts localhost, and opens the app.
+- CLI launcher that shows the Oriplex logo, asks for provider/API key/model, starts localhost, and opens the app.
 
 ## Localhost Quick Start
 
@@ -23,6 +23,7 @@ python cli.py
 ```
 
 Choose `mock` first to verify the full workflow without paid API keys.
+For OpenRouter, enter the exact model route you want to use when prompted.
 
 The CLI starts:
 
@@ -60,10 +61,17 @@ Then add the matching API key:
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`
 - `OPENROUTER_API_KEY`
 
+Model defaults:
+
+- Gemini: `gemini-3.1-pro-preview`
+- OpenAI: `gpt-5.5` with `OPENAI_REASONING_EFFORT=medium`
+- OpenRouter: user-entered `OPENROUTER_MODEL`
+
 ## API Shape
 
 - `GET /api/health`
 - `GET /api/providers`
+- `POST /api/data-extraction/generate-title`
 - `POST /api/data-extraction/upload`
 - `POST /api/data-extraction/extract`
 - `GET /api/data-extraction/session/{session_id}/files`

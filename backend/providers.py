@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from .config import Settings
+
+logger = logging.getLogger("data_extraction.providers")
 
 
 class ProviderError(RuntimeError):
@@ -50,6 +53,7 @@ class BaseProvider(ABC):
 
 class MockProvider(BaseProvider):
     async def extract(self, documents: List[Dict[str, str]], fields: List[str], query: str = "") -> List[Dict[str, Any]]:
+        logger.info("provider.mock.extract documents=%d fields=%s", len(documents), fields)
         await asyncio.sleep(0.2)
         return self.mock_rows(documents, fields)
 
@@ -75,6 +79,13 @@ class OpenAIProvider(BaseProvider):
             raise ProviderError("OPENAI_API_KEY is required for the OpenAI provider.")
         from openai import AsyncOpenAI
 
+        logger.info(
+            "provider.openai.extract model=%s reasoning_effort=%s documents=%d fields=%s",
+            self.settings.openai_model,
+            self.settings.openai_reasoning_effort,
+            len(documents),
+            fields,
+        )
         client = AsyncOpenAI(api_key=self.settings.openai_api_key)
         kwargs: Dict[str, Any] = {
             "model": self.settings.openai_model,
@@ -94,6 +105,12 @@ class OpenRouterProvider(BaseProvider):
             raise ProviderError("OPENROUTER_API_KEY is required for the OpenRouter provider.")
         from openai import AsyncOpenAI
 
+        logger.info(
+            "provider.openrouter.extract model=%s documents=%d fields=%s",
+            self.settings.openrouter_model,
+            len(documents),
+            fields,
+        )
         client = AsyncOpenAI(
             api_key=self.settings.openrouter_api_key,
             base_url="https://openrouter.ai/api/v1",
@@ -114,6 +131,12 @@ class AnthropicProvider(BaseProvider):
             raise ProviderError("ANTHROPIC_API_KEY is required for the Anthropic provider.")
         from anthropic import AsyncAnthropic
 
+        logger.info(
+            "provider.anthropic.extract model=%s documents=%d fields=%s",
+            self.settings.anthropic_model,
+            len(documents),
+            fields,
+        )
         client = AsyncAnthropic(api_key=self.settings.anthropic_api_key)
         response = await client.messages.create(
             model=self.settings.anthropic_model,
@@ -131,6 +154,12 @@ class GeminiProvider(BaseProvider):
             raise ProviderError("GEMINI_API_KEY or GOOGLE_API_KEY is required for the Gemini provider.")
         from google import genai
 
+        logger.info(
+            "provider.gemini.extract model=%s documents=%d fields=%s",
+            self.settings.gemini_model,
+            len(documents),
+            fields,
+        )
         client = genai.Client(api_key=api_key)
         prompt = self._prompt(documents, fields, query)
 

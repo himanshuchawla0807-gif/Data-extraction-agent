@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import uuid
 from datetime import datetime
@@ -12,6 +13,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import UploadFile
 
 from .config import Settings
+
+logger = logging.getLogger("data_extraction.storage")
 
 
 class SessionStore:
@@ -45,6 +48,7 @@ class SessionStore:
                 "table_data": {"columns": [], "rows": []},
             }
             self.save()
+            logger.info("session_store.created session_id=%s session_store=%s", session_id, self.session_store)
         return self.sessions[session_id]
 
     def get(self, session_id: str) -> Optional[Dict[str, Any]]:
@@ -75,6 +79,13 @@ class SessionStore:
             }
             session["uploaded_files"].append(info)
             saved_files.append(info)
+            logger.info(
+                "file.saved session_id=%s display_name=%s size=%d path=%s",
+                session_id,
+                safe_name,
+                info["size"],
+                path,
+            )
 
         self.save()
         return saved_files
@@ -131,6 +142,12 @@ class SessionStore:
                 "file_name": file_info["display_name"],
                 "text": text[:24000],
             })
+            logger.info(
+                "file.text_extracted session_id=%s file_name=%s chars=%d",
+                session_id,
+                file_info["display_name"],
+                len(text),
+            )
         return documents
 
     def _read_text(self, path: Path) -> str:
@@ -147,4 +164,3 @@ class SessionStore:
             return "\n".join(page.extract_text() or "" for page in reader.pages)
         except Exception:
             return ""
-

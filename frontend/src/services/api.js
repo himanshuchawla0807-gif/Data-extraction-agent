@@ -1,10 +1,11 @@
-/**
+﻿/**
  * API Service - HTTP Client for Data Extraction Backend
  * Handles file uploads, session management, and HTTP requests
  */
 
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
+import { getLocalIdentity } from './localIdentity';
 
 // API Configuration
 // const API_BASE_URL = 'http://localhost:8001/api';
@@ -25,12 +26,15 @@ apiClient.interceptors.request.use(
     const token = localStorage.getItem('auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('🔐 [API] Authorization header SET (token present)');
+      console.log('[API] Authorization header set from auth_token');
     } else {
-      console.warn('⚠️ [API] No auth token in localStorage - request will be anonymous!');
+      const localIdentity = getLocalIdentity();
+      config.headers['X-Local-Mode'] = 'true';
+      config.headers['X-Local-User'] = localIdentity.userId;
+      console.info(`[API] Local mode active for ${localIdentity.userId}`);
     }
 
-    console.log('📤 [API] Request:', config.method.toUpperCase(), config.url);
+    console.log('ðŸ“¤ [API] Request:', config.method.toUpperCase(), config.url);
     return config;
   },
   (error) => {
@@ -124,7 +128,7 @@ class ApiService {
         formData.append('files', file);
       });
 
-      // ✅ CORRECT: Use the data-extraction upload endpoint
+      // âœ… CORRECT: Use the data-extraction upload endpoint
       const response = await apiClient.post('/data-extraction/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -181,6 +185,7 @@ class ApiService {
    */
   saveSessionId(sessionId) {
     localStorage.setItem('data_extraction_session_id', sessionId);
+    localStorage.setItem('data_extraction_last_session_id', sessionId);
   }
 
   /**
@@ -255,3 +260,4 @@ class ApiService {
 // Export singleton instance
 const apiService = new ApiService();
 export default apiService;
+

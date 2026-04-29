@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,12 +21,14 @@ from .storage import SessionStore
 router = APIRouter()
 connections: Dict[str, WebSocket] = {}
 stores: Dict[str, SessionStore] = {}
+logger = logging.getLogger("data_extraction.api")
 
 
 def get_store(settings: Settings = Depends(get_settings)) -> SessionStore:
     key = str(settings.session_store.resolve())
     if key not in stores:
         stores[key] = SessionStore(settings)
+        logger.info("storage.initialized root=%s session_store=%s", settings.local_storage_dir, settings.session_store)
     return stores[key]
 
 
@@ -76,6 +79,7 @@ async def create_local_session(payload: Dict[str, Any], store: SessionStore = De
     session["user_id"] = payload.get("userId") or payload.get("user_id") or "local"
     session["agent_type"] = payload.get("agentType") or "data_extraction"
     store.save()
+    logger.info("session.created session_id=%s user_id=%s", session_id, session["user_id"])
     return {"success": True, "session": session, "sessionId": session_id}
 
 
@@ -99,6 +103,7 @@ async def save_local_message(
         "created_at": datetime.utcnow().isoformat(),
     })
     store.save()
+    logger.info("session.message_saved session_id=%s user_id=%s role=%s", session_id, user_id, payload.get("role", "user"))
     return {"success": True, "messageCount": len(session["messages"])}
 
 
@@ -115,6 +120,7 @@ async def save_local_table(
     session["table_data"] = {"columns": columns, "rows": rows}
     session["chat_title"] = payload.get("chatTitle") or session.get("chat_title")
     store.save()
+    logger.info("session.table_saved session_id=%s user_id=%s columns=%d rows=%d", session_id, user_id, len(columns), len(rows))
     return {"success": True, "columnCount": len(columns), "rowCount": len(rows)}
 
 
@@ -140,7 +146,15 @@ async def upload_files(
     files: List[UploadFile] = File(...),
     store: SessionStore = Depends(get_store),
 ) -> Dict[str, Any]:
+    logger.info("upload.start session_id=%s files=%d", session_id, len(files))
     uploaded = await store.save_uploads(session_id, files)
+    logger.info(
+        "upload.complete session_id=%s files=%d total_bytes=%d stored_paths=%s",
+        session_id,
+        len(uploaded),
+        sum(file_info.get("size", 0) for file_info in uploaded),
+        [file_info.get("path") for file_info in uploaded],
+    )
     await send_ws(session_id, {
         "type": "files_stored",
         "message": f"{len(uploaded)} file(s) stored locally.",
@@ -173,6 +187,13 @@ async def extract_data(
     store: SessionStore = Depends(get_store),
 ) -> ExtractionResponse:
     session_id = request.document_ids[0] if request.document_ids else f"session_{uuid.uuid4().hex[:8]}"
+    logger.info(
+        "extract.http.start session_id=%s provider=%s model=%s fields=%s",
+        session_id,
+        settings.data_extraction_provider,
+        settings.effective_model(),
+        request.fields,
+    )
     rows = await run_extraction_workflow(
         settings,
         store.extract_texts(session_id),
@@ -180,6 +201,7 @@ async def extract_data(
         request.query or request.context or "",
     )
     store.update_table_rows(session_id, rows)
+    logger.info("extract.http.complete session_id=%s rows=%d", session_id, len(rows))
     return ExtractionResponse(
         extraction_id=str(uuid.uuid4()),
         extracted_fields={"rows": rows},
@@ -214,6 +236,14 @@ async def run_and_stream_extraction(
     if not fields:
         fields = ["Summary"]
 
+    logger.info(
+        "extract.ws.start session_id=%s provider=%s model=%s fields=%s query=%r",
+        session_id,
+        settings.data_extraction_provider,
+        settings.effective_model(),
+        fields,
+        query[:200],
+    )
     await send_ws(session_id, {"type": "extraction_progress", "status": "started", "message": "Starting extraction"})
     for index, field in enumerate(fields, start=1):
         await send_ws(session_id, {
@@ -224,10 +254,13 @@ async def run_and_stream_extraction(
         })
 
     documents = store.extract_texts(session_id)
+    logger.info("extract.ws.documents session_id=%s document_count=%d", session_id, len(documents))
     try:
         rows = await run_extraction_workflow(settings, documents, fields, query)
         store.update_table_rows(session_id, rows)
+        logger.info("extract.ws.provider_complete session_id=%s rows=%d", session_id, len(rows))
     except Exception as exc:
+        logger.exception("extract.ws.failed session_id=%s provider=%s model=%s", session_id, settings.data_extraction_provider, settings.effective_model())
         await send_ws(session_id, {
             "type": "error",
             "message": str(exc),
@@ -273,6 +306,7 @@ async def run_and_stream_extraction(
         "rows": rows,
         "fields": fields,
     })
+    logger.info("extract.ws.complete session_id=%s fields=%d rows=%d", session_id, len(fields), len(rows))
 
 
 @router.websocket("/ws/{session_id}")
@@ -285,6 +319,7 @@ async def websocket_endpoint(
 ) -> None:
     await websocket.accept()
     connections[session_id] = websocket
+    logger.info("websocket.connected session_id=%s", session_id)
     await websocket.send_json({
         "type": "connection_established",
         "session_id": session_id,
@@ -299,6 +334,7 @@ async def websocket_endpoint(
         while True:
             data = await websocket.receive_json()
             message_type = data.get("type")
+            logger.info("websocket.message session_id=%s type=%s", session_id, message_type)
             if message_type == "ping":
                 await websocket.send_json({"type": "pong", "timestamp": datetime.utcnow().isoformat()})
             elif message_type in {"start_extraction", "extraction_query", "column_query", "refine_column"}:
@@ -318,8 +354,10 @@ async def websocket_endpoint(
                 await websocket.send_json({"type": "debug", "message": f"Unhandled message type: {message_type}"})
     except WebSocketDisconnect:
         connections.pop(session_id, None)
+        logger.info("websocket.disconnected session_id=%s", session_id)
     except Exception as exc:
         connections.pop(session_id, None)
+        logger.exception("websocket.failed session_id=%s", session_id)
         try:
             await websocket.send_json({"type": "error", "message": str(exc)})
         except Exception:
