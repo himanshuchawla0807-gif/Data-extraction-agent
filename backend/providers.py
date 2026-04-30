@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
@@ -32,22 +33,48 @@ class BaseProvider(ABC):
         )
         return (
             "Extract the requested fields from each document. "
-            "Return JSON only as an array of objects. Each object must include "
-            "'file_name' and one key per requested field.\n\n"
+            "Return valid JSON only, with no markdown fences or prose. "
+            "The JSON must be an object with a 'rows' array. Each row must include "
+            "'file_name' and one key per requested field. If a value is not found, use 'Not found'.\n\n"
+            "Use common financial-statement aliases: Revenue may appear as total revenues; "
+            "Net Income may appear as net income or net income attributable to the company; "
+            "Shareholders Equity may appear as stockholders' equity. Prefer annual values from "
+            "consolidated statements, not quarterly values.\n\n"
             f"Fields: {fields}\n"
             f"User query: {query or 'Extract the requested fields'}\n\n"
             f"{docs}"
         )
 
     def _parse_rows(self, raw: str, documents: List[Dict[str, str]], fields: List[str]) -> List[Dict[str, Any]]:
-        try:
-            data = json.loads(raw)
-            if isinstance(data, dict):
-                data = data.get("rows") or data.get("data") or [data]
-            if isinstance(data, list):
-                return [row for row in data if isinstance(row, dict)]
-        except Exception:
-            pass
+        raw = (raw or "").strip()
+        candidates = [raw]
+        fenced = re.search(r"```(?:json)?\s*(.*?)```", raw, re.DOTALL | re.IGNORECASE)
+        if fenced:
+            candidates.append(fenced.group(1).strip())
+        first_object = raw.find("{")
+        last_object = raw.rfind("}")
+        if first_object != -1 and last_object > first_object:
+            candidates.append(raw[first_object:last_object + 1])
+        first_array = raw.find("[")
+        last_array = raw.rfind("]")
+        if first_array != -1 and last_array > first_array:
+            candidates.append(raw[first_array:last_array + 1])
+
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                data = json.loads(candidate)
+                if isinstance(data, dict):
+                    data = data.get("rows") or data.get("data") or data.get("results") or [data]
+                if isinstance(data, list):
+                    rows = [row for row in data if isinstance(row, dict)]
+                    if rows:
+                        return rows
+            except Exception:
+                continue
+
+        logger.warning("provider.parse_failed using fallback raw_preview=%r", raw[:300])
         return MockProvider(self.settings).mock_rows(documents, fields)
 
 
@@ -164,7 +191,16 @@ class GeminiProvider(BaseProvider):
         prompt = self._prompt(documents, fields, query)
 
         def call_model() -> str:
-            response = client.models.generate_content(model=self.settings.gemini_model, contents=prompt)
+            try:
+                from google.genai import types
+
+                response = client.models.generate_content(
+                    model=self.settings.gemini_model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(response_mime_type="application/json"),
+                )
+            except Exception:
+                response = client.models.generate_content(model=self.settings.gemini_model, contents=prompt)
             return getattr(response, "text", "") or "[]"
 
         raw = await asyncio.to_thread(call_model)

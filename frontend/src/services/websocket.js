@@ -187,6 +187,7 @@ class WebSocketService {
 
       case 'upload_complete':
         this.emit('uploadComplete', message);
+        this.emit('upload_complete', message);
         break;
 
       case 'indexing_complete':
@@ -203,6 +204,7 @@ class WebSocketService {
 
       case 'extraction_complete':
         this.emit('extractionComplete', message);
+        this.emit('extraction_complete', message);
         break;
 
       case 'status_update':
@@ -580,5 +582,3 @@ class WebSocketService {
 export { WebSocketService };  // Named export of the class
 const websocketService = new WebSocketService();
 export default websocketService;
-
-

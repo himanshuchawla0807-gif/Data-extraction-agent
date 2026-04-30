@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import uuid
 from datetime import datetime
@@ -128,7 +129,7 @@ class SessionStore:
         session["table_data"] = {"columns": columns, "rows": rows}
         self.save()
 
-    def extract_texts(self, session_id: str) -> List[Dict[str, str]]:
+    def extract_texts(self, session_id: str, query: str = "", fields: Optional[List[str]] = None) -> List[Dict[str, str]]:
         documents: List[Dict[str, str]] = []
         for file_info in self.get_files(session_id):
             path = Path(file_info.get("path", ""))
@@ -137,18 +138,80 @@ class SessionStore:
                 text = self._read_pdf(path)
             else:
                 text = self._read_text(path)
+            selected_text = self._select_relevant_text(text, query=query, fields=fields or [])
             documents.append({
                 "file_id": file_info["file_id"],
                 "file_name": file_info["display_name"],
-                "text": text[:24000],
+                "text": selected_text,
             })
             logger.info(
-                "file.text_extracted session_id=%s file_name=%s chars=%d",
+                "file.text_extracted session_id=%s file_name=%s chars=%d selected_chars=%d",
                 session_id,
                 file_info["display_name"],
                 len(text),
+                len(selected_text),
             )
         return documents
+
+    def _select_relevant_text(self, text: str, query: str = "", fields: Optional[List[str]] = None) -> str:
+        if not text:
+            return ""
+
+        terms = set(re.findall(r"[A-Za-z][A-Za-z ]{2,}", query or ""))
+        for field in fields or []:
+            terms.add(field)
+
+        financial_terms = [
+            "total revenues",
+            "revenues",
+            "revenue",
+            "net income",
+            "operating income",
+            "gross profit",
+            "cash and cash equivalents",
+            "total assets",
+            "total liabilities",
+            "stockholders' equity",
+            "shareholders equity",
+            "consolidated statements of operations",
+            "consolidated balance sheets",
+            "consolidated statements of cash flows",
+            "cash flows",
+            "capital expenditures",
+        ]
+        lower_query = (query or "").lower()
+        if "financial" in lower_query or "10-k" in lower_query or "10k" in lower_query:
+            terms.update(financial_terms)
+        for field in fields or []:
+            normalized = field.lower()
+            if any(word in normalized for word in ["revenue", "income", "asset", "liabil", "cash", "equity", "ebitda", "profit"]):
+                terms.update(financial_terms)
+
+        chunks = [text[:5000]]
+        lower_text = text.lower()
+        seen_ranges = set()
+        for term in sorted({term.lower().strip() for term in terms if term and len(term.strip()) > 2}):
+            start = 0
+            hits = 0
+            while hits < 4:
+                index = lower_text.find(term, start)
+                if index == -1:
+                    break
+                window_start = max(index - 2500, 0)
+                window_end = min(index + 4500, len(text))
+                range_key = (window_start // 1000, window_end // 1000)
+                if range_key not in seen_ranges:
+                    chunks.append(f"\n\n--- Relevant excerpt for '{term}' ---\n{text[window_start:window_end]}")
+                    seen_ranges.add(range_key)
+                start = index + len(term)
+                hits += 1
+                if sum(len(chunk) for chunk in chunks) > 70000:
+                    break
+            if sum(len(chunk) for chunk in chunks) > 70000:
+                break
+
+        selected = "\n".join(chunks)
+        return selected[:80000]
 
     def _read_text(self, path: Path) -> str:
         try:

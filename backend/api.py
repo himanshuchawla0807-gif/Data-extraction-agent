@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 
 from .config import Settings, get_settings
 from .extraction_graph import run_extraction_workflow
+from .intent import fields_from_query
 from .model_catalog import provider_catalog
 from .models import ExtractionRequest, ExtractionResponse
 from .storage import SessionStore
@@ -196,7 +197,7 @@ async def extract_data(
     )
     rows = await run_extraction_workflow(
         settings,
-        store.extract_texts(session_id),
+        store.extract_texts(session_id, query=request.query or request.context or "", fields=request.fields),
         request.fields,
         request.query or request.context or "",
     )
@@ -253,7 +254,7 @@ async def run_and_stream_extraction(
             "column_index": index,
         })
 
-    documents = store.extract_texts(session_id)
+    documents = store.extract_texts(session_id, query=query, fields=fields)
     logger.info("extract.ws.documents session_id=%s document_count=%d", session_id, len(documents))
     try:
         rows = await run_extraction_workflow(settings, documents, fields, query)
@@ -297,6 +298,7 @@ async def run_and_stream_extraction(
     await send_ws(session_id, {
         "type": "extraction_query_response",
         "message": f"Extracted {len(fields)} field(s) from {len(rows)} file(s).",
+        "response": f"Extracted {len(fields)} field(s) from {len(rows)} file(s): {', '.join(fields)}.",
         "extracted_fields": fields,
         "provider": settings.data_extraction_provider,
     })
@@ -340,7 +342,8 @@ async def websocket_endpoint(
             elif message_type in {"start_extraction", "extraction_query", "column_query", "refine_column"}:
                 fields = data.get("fields") or data.get("columns") or []
                 if not fields and data.get("query"):
-                    fields = [data["query"].replace("Extract", "").strip() or "Summary"]
+                    fields = fields_from_query(data.get("query") or "")
+                logger.info("websocket.extraction_fields session_id=%s fields=%s", session_id, fields)
                 asyncio.create_task(run_and_stream_extraction(
                     session_id=session_id,
                     fields=fields,
