@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+﻿import { useEffect, useCallback, useRef } from 'react';
 import websocketService from '../services/websocket';
 import chatWebsocketService from '../services/chatWebsocket';
 import logger from '../utils/logger';
@@ -134,17 +134,39 @@ export const useExtractionWebSocket = ({
 
             // FIXED: Add rows to table for any new files that don't have rows yet
             if (newFiles.length > 0) {
-                const existingDocNames = new Set(stateRef.current.data.map(row => row['Document Name']));
+                const docCol = stateRef.current.columns.find(c => c.label === 'Document Name' || c.dataType === DataTypes.FILE);
+                const docColId = docCol ? docCol.id : 'Document Name';
+                const existingDocNames = new Set(stateRef.current.data.map(row => {
+                    const raw = row[docColId] || row['Document Name'];
+                    return typeof raw === 'object' ? (raw?.value || raw?.text) : raw;
+                }));
 
                 newFiles.forEach(file => {
                     const displayName = file.display_name || file.filename;
                     if (displayName && !existingDocNames.has(displayName)) {
-                        // Add new row for this file
-                        dispatch({
-                            type: ActionTypes.ADD_ROW,
-                            rowData: { 'Document Name': displayName }
+                        const emptyRowIndex = stateRef.current.data.findIndex(row => {
+                            const raw = row[docColId] || row['Document Name'];
+                            const text = typeof raw === 'object' ? (raw?.value || raw?.text) : raw;
+                            return !text || String(text).trim() === '';
                         });
-                        logger.debug(`[UPLOAD_COMPLETE] Added table row for new file: ${displayName}`);
+                        if (emptyRowIndex >= 0) {
+                            dispatch({
+                                type: ActionTypes.UPDATE_CELL,
+                                rowIndex: emptyRowIndex,
+                                columnId: docColId,
+                                value: displayName
+                            });
+                            logger.debug(`[UPLOAD_COMPLETE] Filled row ${emptyRowIndex + 1} for new file: ${displayName}`);
+                        } else {
+                            const rowData = { 'Document Name': displayName };
+                            rowData[docColId] = displayName;
+                            dispatch({
+                                type: ActionTypes.ADD_ROW,
+                                rowData
+                            });
+                            logger.debug(`[UPLOAD_COMPLETE] Added table row for new file: ${displayName}`);
+                        }
+                        existingDocNames.add(displayName);
                     }
                 });
             }
@@ -614,7 +636,6 @@ export const useExtractionWebSocket = ({
                     // Tier 1: Case-insensitive exact match
                     let existingCol = columns.find(c => c.label?.toLowerCase() === lowerName);
 
-                    // Tier 2: startsWith match (e.g., "Risk Scoring" matches "Risk Scoring (1-10)")
                     if (!existingCol && lowerName) {
                         existingCol = columns.find(c => c.label?.toLowerCase().startsWith(lowerName));
                         if (existingCol) {
@@ -669,10 +690,33 @@ export const useExtractionWebSocket = ({
                 }
 
                 const rowIndex = data.row_index;
+                const normalizeName = (value) => String(value || '')
+                    .replace(/^[a-f0-9-]+_/i, '')
+                    .toLowerCase()
+                    .trim();
+                const rowMatchesFile = (candidateRowIndex) => {
+                    if (typeof candidateRowIndex !== 'number') return false;
+                    const row = stateRef.current.data[candidateRowIndex];
+                    if (!row || !data.file_name) return false;
+                    const docCol = stateRef.current.columns.find(c =>
+                        c.label === 'Document Name' || c.dataType === DataTypes.FILE
+                    );
+                    const docColId = docCol ? docCol.id : 'Document Name';
+                    const rawDocName = row[docColId] || row['Document Name'] || '';
+                    const docName = typeof rawDocName === 'object'
+                        ? (rawDocName.value || rawDocName.text || '')
+                        : rawDocName;
+                    const normalizedDoc = normalizeName(docName);
+                    const normalizedFile = normalizeName(data.file_name);
+                    return !!normalizedDoc && !!normalizedFile &&
+                        (normalizedDoc === normalizedFile ||
+                            normalizedDoc.includes(normalizedFile) ||
+                            normalizedFile.includes(normalizedDoc));
+                };
 
-                // [FIX] Robust Row Index - if missing, try to find by file_name
+                // [FIX] Robust Row Index - only trust backend row_index if it matches the file row.
                 // Uses multi-strategy matching for filenames
-                let targetRowIndex = rowIndex;
+                let targetRowIndex = rowMatchesFile(rowIndex) ? rowIndex : undefined;
 
                 // ✅ DEBUG: Log row resolution attempt
                 console.log(`[ROW_RESOLVE] Starting resolution for file: "${data.file_name}", backend row_index: ${data.row_index}`);

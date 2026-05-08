@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import UploadFile
 
 from .config import Settings
+from .rag_index import LocalEmbeddingIndex
 
 logger = logging.getLogger("data_extraction.storage")
 
@@ -23,9 +24,12 @@ class SessionStore:
         self.settings = settings
         self.root = settings.local_storage_dir
         self.upload_root = self.root / "uploads"
+        self.index_root = self.root / "indexes"
+        self.embedding_index = LocalEmbeddingIndex(settings.local_embedding_dir.expanduser())
         self.session_store = settings.session_store
         self.root.mkdir(parents=True, exist_ok=True)
         self.upload_root.mkdir(parents=True, exist_ok=True)
+        self.index_root.mkdir(parents=True, exist_ok=True)
         self.session_store.parent.mkdir(parents=True, exist_ok=True)
         self.sessions: Dict[str, Dict[str, Any]] = self._load()
 
@@ -129,8 +133,15 @@ class SessionStore:
         session["table_data"] = {"columns": columns, "rows": rows}
         self.save()
 
-    def extract_texts(self, session_id: str, query: str = "", fields: Optional[List[str]] = None) -> List[Dict[str, str]]:
+    def extract_texts(
+        self,
+        session_id: str,
+        query: str = "",
+        fields: Optional[List[str]] = None,
+        table_context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, str]]:
         documents: List[Dict[str, str]] = []
+        retrieval_query = self._retrieval_query(query, fields or [], table_context or self.table_state(session_id))
         for file_info in self.get_files(session_id):
             path = Path(file_info.get("path", ""))
             text = ""
@@ -138,80 +149,166 @@ class SessionStore:
                 text = self._read_pdf(path)
             else:
                 text = self._read_text(path)
-            selected_text = self._select_relevant_text(text, query=query, fields=fields or [])
+            text_index_path = self._write_text_index(session_id, file_info["file_id"], file_info["display_name"], text)
+            embedding_path = self.embedding_index.ensure_index(
+                session_id,
+                file_info["file_id"],
+                file_info["display_name"],
+                text,
+            )
+            retrieved_chunks = self.embedding_index.retrieve(embedding_path, retrieval_query, top_k=14)
+            retrieval_context_path = self.embedding_index.write_context_file(
+                session_id,
+                file_info["file_id"],
+                file_info["display_name"],
+                str(path),
+                str(text_index_path),
+                retrieval_query,
+                retrieved_chunks,
+            )
+            max_chars = max(self.settings.max_document_chars, 0)
+            selected_text = text if max_chars == 0 else text[:max_chars]
             documents.append({
                 "file_id": file_info["file_id"],
                 "file_name": file_info["display_name"],
+                "path": str(path),
+                "text_path": str(text_index_path),
+                "embedding_index_path": str(embedding_path),
+                "retrieval_context_path": str(retrieval_context_path),
                 "text": selected_text,
             })
             logger.info(
-                "file.text_extracted session_id=%s file_name=%s chars=%d selected_chars=%d",
+                "file.text_extracted session_id=%s file_name=%s chars=%d provided_chars=%d text_index=%s embedding_index=%s retrieved_chunks=%d",
                 session_id,
                 file_info["display_name"],
                 len(text),
                 len(selected_text),
+                text_index_path,
+                embedding_path,
+                len(retrieved_chunks),
             )
         return documents
 
-    def _select_relevant_text(self, text: str, query: str = "", fields: Optional[List[str]] = None) -> str:
+    def supporting_citation(self, session_id: str, file_name: str, field: str, value: Any) -> Dict[str, str]:
+        excerpt = self.supporting_excerpt(session_id, file_name, field, value)
+        return {
+            "source": "file",
+            "filename": file_name,
+            "domain": file_name,
+            "excerpt": excerpt,
+            "field": str(field or ""),
+            "value": str(value or ""),
+        }
+
+    def supporting_excerpt(self, session_id: str, file_name: str, field: str, value: Any) -> str:
+        text = self._text_for_display_name(session_id, file_name)
         if not text:
-            return ""
+            return "No extractable source text was found for this file."
 
-        terms = set(re.findall(r"[A-Za-z][A-Za-z ]{2,}", query or ""))
-        for field in fields or []:
-            terms.add(field)
-
-        financial_terms = [
-            "total revenues",
-            "revenues",
-            "revenue",
-            "net income",
-            "operating income",
-            "gross profit",
-            "cash and cash equivalents",
-            "total assets",
-            "total liabilities",
-            "stockholders' equity",
-            "shareholders equity",
-            "consolidated statements of operations",
-            "consolidated balance sheets",
-            "consolidated statements of cash flows",
-            "cash flows",
-            "capital expenditures",
-        ]
-        lower_query = (query or "").lower()
-        if "financial" in lower_query or "10-k" in lower_query or "10k" in lower_query:
-            terms.update(financial_terms)
-        for field in fields or []:
-            normalized = field.lower()
-            if any(word in normalized for word in ["revenue", "income", "asset", "liabil", "cash", "equity", "ebitda", "profit"]):
-                terms.update(financial_terms)
-
-        chunks = [text[:5000]]
+        candidates = self._citation_search_terms(field, value)
         lower_text = text.lower()
-        seen_ranges = set()
-        for term in sorted({term.lower().strip() for term in terms if term and len(term.strip()) > 2}):
-            start = 0
-            hits = 0
-            while hits < 4:
-                index = lower_text.find(term, start)
-                if index == -1:
-                    break
-                window_start = max(index - 2500, 0)
-                window_end = min(index + 4500, len(text))
-                range_key = (window_start // 1000, window_end // 1000)
-                if range_key not in seen_ranges:
-                    chunks.append(f"\n\n--- Relevant excerpt for '{term}' ---\n{text[window_start:window_end]}")
-                    seen_ranges.add(range_key)
-                start = index + len(term)
-                hits += 1
-                if sum(len(chunk) for chunk in chunks) > 70000:
-                    break
-            if sum(len(chunk) for chunk in chunks) > 70000:
-                break
+        for term in candidates:
+            if not term:
+                continue
+            index = lower_text.find(term.lower())
+            if index >= 0:
+                start = max(index - 500, 0)
+                end = min(index + max(len(term), 1) + 900, len(text))
+                return " ".join(text[start:end].split())
 
-        selected = "\n".join(chunks)
-        return selected[:80000]
+        retrieved = self._retrieved_supporting_chunk(session_id, file_name, f"{field} {value}")
+        if retrieved:
+            return retrieved
+        return "No exact supporting chunk was found in the local text index for this value."
+
+    def _retrieved_supporting_chunk(self, session_id: str, file_name: str, query: str) -> str:
+        normalized_name = self._normalize_filename(file_name)
+        for file_info in self.get_files(session_id):
+            display_name = file_info.get("display_name") or file_info.get("filename") or ""
+            if self._normalize_filename(display_name) != normalized_name:
+                continue
+            index_path = self.embedding_index.root / session_id / f"{file_info['file_id']}.json"
+            chunks = self.embedding_index.retrieve(index_path, query, top_k=1)
+            if chunks:
+                return " ".join(str(chunks[0].get("text") or "").split())
+        return ""
+
+    def _text_for_display_name(self, session_id: str, file_name: str) -> str:
+        normalized_name = self._normalize_filename(file_name)
+        for file_info in self.get_files(session_id):
+            display_name = file_info.get("display_name") or file_info.get("filename") or ""
+            if self._normalize_filename(display_name) != normalized_name:
+                continue
+            text_index = self.index_root / session_id / f"{file_info['file_id']}_{Path(display_name).stem}.txt"
+            if text_index.exists():
+                return text_index.read_text(encoding="utf-8", errors="ignore")
+            path = Path(file_info.get("path", ""))
+            if path.suffix.lower() == ".pdf":
+                return self._read_pdf(path)
+            return self._read_text(path)
+        return ""
+
+    def _citation_search_terms(self, field: str, value: Any) -> List[str]:
+        terms: List[str] = []
+        raw_value = str(value or "").strip()
+        raw_field = str(field or "").strip()
+        if raw_value and raw_value.lower() != "not found":
+            terms.append(raw_value)
+            cleaned_value = re.sub(r"[$,]", "", raw_value)
+            if cleaned_value != raw_value:
+                terms.append(cleaned_value)
+            number_parts = re.findall(r"\d+(?:\.\d+)?", raw_value)
+            terms.extend(number_parts)
+        if raw_field:
+            terms.append(raw_field)
+            words = [word for word in re.findall(r"[A-Za-z]+", raw_field) if len(word) > 3]
+            if len(words) >= 2:
+                terms.append(" ".join(words[:3]))
+            terms.extend(words)
+        seen = set()
+        unique = []
+        for term in terms:
+            normalized = term.lower().strip()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                unique.append(term.strip())
+        return unique
+
+    def _normalize_filename(self, value: str) -> str:
+        return re.sub(r"^[a-f0-9-]+_", "", str(value or "")).strip().lower()
+
+    def _write_text_index(self, session_id: str, file_id: str, display_name: str, text: str) -> Path:
+        session_dir = self.index_root / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = Path(display_name).stem or file_id
+        index_path = session_dir / f"{file_id}_{safe_name}.txt"
+        index_path.write_text(text or "", encoding="utf-8", errors="ignore")
+        return index_path
+
+    def _retrieval_query(self, query: str, fields: List[str], table_context: Dict[str, Any]) -> str:
+        columns = table_context.get("columns") if isinstance(table_context, dict) else []
+        rows = table_context.get("rows") if isinstance(table_context, dict) else []
+        column_text = " ".join(
+            str((column.get("label") or column.get("id")) if isinstance(column, dict) else column)
+            for column in (columns or [])
+            if str(column.get("label") if isinstance(column, dict) else column) != "+"
+        )
+        row_text = ""
+        if isinstance(rows, list):
+            row_text = " ".join(
+                " ".join(str(value) for value in row.values() if value not in (None, ""))
+                for row in rows[:8]
+                if isinstance(row, dict)
+            )
+        return " ".join(
+            part for part in [
+                str(query or ""),
+                " ".join(str(field) for field in fields),
+                column_text,
+                row_text,
+            ]
+            if part
+        )[:6000]
 
     def _read_text(self, path: Path) -> str:
         try:

@@ -1024,6 +1024,46 @@ function App() {
   const [extractionResults, setExtractionResults] = useState({});
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const buildTableContext = useCallback(() => {
+    const current = stateRef.current || state;
+    const columns = (current.columns || [])
+      .filter(column => column && !column.hidden && column.id !== Constants.ADD_COLUMN_ID && column.label !== '+')
+      .map(column => ({
+        id: column.id,
+        label: column.label || column.id,
+        accessor: column.accessor || column.id,
+        dataType: column.dataType || 'text'
+      }));
+
+    const rows = (current.data || [])
+      .map(row => {
+        const mapped = {};
+        columns.forEach(column => {
+          const value = row?.[column.accessor] ?? row?.[column.id] ?? row?.[column.label];
+          if (value !== undefined && value !== null && value !== '') {
+            mapped[column.label] = value;
+          }
+        });
+        return mapped;
+      })
+      .filter(row => Object.keys(row).length > 0)
+      .slice(0, 20);
+
+    return {
+      columns,
+      rows,
+      uploaded_files: uploadedFiles.map(file => ({
+        display_name: file.display_name || file.name || file.filename,
+        filename: file.filename,
+        size: file.size
+      })),
+      conversation: chatMessages.slice(-10).map(message => ({
+        role: message.role || message.sender || 'user',
+        content: message.content || message.text || ''
+      }))
+    };
+  }, [state, uploadedFiles, chatMessages]);
+
   // ✅ NEW: Chat WebSocket state
   const [pendingModification, setPendingModification] = useState(null);
   const [isChatTyping, setIsChatTyping] = useState(false);
@@ -1918,14 +1958,36 @@ function App() {
                 sessionData.files.forEach(file => {
                   const displayName = file.display_name || file.filename;
                   if (displayName) {
-                    // Check if row already exists
-                    const existingRow = stateRef.current.data.find(row => row['Document Name'] === displayName);
+                    const docCol = stateRef.current.columns.find(c => c.label === 'Document Name' || c.dataType === DataTypes.FILE);
+                    const docColId = docCol ? docCol.id : 'Document Name';
+                    const existingRow = stateRef.current.data.find(row => {
+                      const raw = row[docColId] || row['Document Name'];
+                      const text = typeof raw === 'object' ? (raw?.value || raw?.text) : raw;
+                      return text === displayName;
+                    });
                     if (!existingRow) {
-                      console.log(`[UPLOAD] Adding row for file: ${displayName}`);
-                      dispatch({
-                        type: ActionTypes.ADD_ROW,
-                        rowData: { 'Document Name': displayName }
+                      const emptyRowIndex = stateRef.current.data.findIndex(row => {
+                        const raw = row[docColId] || row['Document Name'];
+                        const text = typeof raw === 'object' ? (raw?.value || raw?.text) : raw;
+                        return !text || String(text).trim() === '';
                       });
+                      if (emptyRowIndex >= 0) {
+                        console.log(`[UPLOAD] Filling row ${emptyRowIndex + 1} for file: ${displayName}`);
+                        dispatch({
+                          type: ActionTypes.UPDATE_CELL,
+                          rowIndex: emptyRowIndex,
+                          columnId: docColId,
+                          value: displayName
+                        });
+                      } else {
+                        console.log(`[UPLOAD] Adding row for file: ${displayName}`);
+                        const rowData = { 'Document Name': displayName };
+                        rowData[docColId] = displayName;
+                        dispatch({
+                          type: ActionTypes.ADD_ROW,
+                          rowData
+                        });
+                      }
                     }
                   }
                 });
@@ -2364,7 +2426,8 @@ function App() {
         type: 'extraction_query',
         query: data.message,
         session_id: sessionId,
-        enable_web_search: effectiveWebSearch
+        enable_web_search: effectiveWebSearch,
+        table_context: buildTableContext()
       });
 
       logger.debug('[SEND_RESULT]', sendResult ? 'SUCCESS' : 'FAILED');
@@ -2382,14 +2445,12 @@ function App() {
         return;
       }
 
-      // ✅ FIX: Instead of timeout, add rotating preset messages for user feedback
       // No timeout - extraction continues until complete or explicit error
-      // Preset messages to keep user informed during long processing
-      const presetMessages = [
+      const progressMessages = [
         "Analyzing your query...",
         "Extracting data from files...",
         "Large files may take longer...",
-        "Processing financial data...",
+        "Processing the uploaded documents...",
         "Almost there, please wait...",
         "Searching for relevant information...",
         "Parsing document structure...",
@@ -2400,7 +2461,7 @@ function App() {
       const messageInterval = setInterval(() => {
         // Only update if still thinking
         if (isThinking || isChatTyping) {
-          setThinkingMessage(presetMessages[messageIndex % presetMessages.length]);
+          setThinkingMessage(progressMessages[messageIndex % progressMessages.length]);
           messageIndex++;
         }
       }, 5000); // Rotate message every 5 seconds

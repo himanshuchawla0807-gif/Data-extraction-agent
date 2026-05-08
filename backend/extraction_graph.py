@@ -23,8 +23,6 @@ async def run_extraction_workflow(
     query: str = "",
 ) -> List[Dict[str, Any]]:
     fields = [field for field in fields if field and field != "Document Name"]
-    if not fields:
-        fields = ["Summary"]
 
     provider = get_provider(settings)
 
@@ -33,14 +31,22 @@ async def run_extraction_workflow(
         return {**state, "rows": rows}
 
     async def verify_node(state: ExtractionState) -> ExtractionState:
+        output_fields = list(state["fields"])
+        if not output_fields:
+            seen = set()
+            for row in state.get("rows", []):
+                for key in row.keys():
+                    if key not in {"Document Name", "file_name"} and key not in seen:
+                        output_fields.append(key)
+                        seen.add(key)
         normalized_rows = []
         for row in state.get("rows", []):
             next_row = {"Document Name": row.get("Document Name") or row.get("file_name") or "Document"}
-            for field in state["fields"]:
+            for field in output_fields:
                 value = row.get(field)
                 next_row[field] = value if value not in (None, "") else "Not found"
             normalized_rows.append(next_row)
-        return {**state, "rows": normalized_rows, "verified": True}
+        return {**state, "fields": output_fields, "rows": normalized_rows, "verified": True}
 
     try:
         from langgraph.graph import END, StateGraph

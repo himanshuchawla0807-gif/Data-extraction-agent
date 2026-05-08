@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import ContentEditable from 'react-contenteditable';
 import { ActionTypes } from '../utils';
 import CellModal from '../components/CellModal';
@@ -101,21 +101,6 @@ export default function NumberCell({
     cleaned = cleaned.replace(/\[\d+\]/g, '');
     cleaned = cleaned.replace(/\|+/g, '');
     cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
-
-    // ✅ NEW: Strip financial descriptive prefixes (same as TextCell)
-    const financialPrefixes = [
-      'Adjusted', 'Total', 'Net', 'Gross', 'Operating',
-      'Non-Operating', 'Consolidated', 'Normalized',
-      'Recurring', 'Non-Recurring', 'Annualized', 'Pro Forma',
-      'Diluted', 'Basic', 'Comprehensive', 'Attributable'
-    ];
-
-    // Use word boundary regex to avoid false matches (e.g., "Network" → "work")
-    const prefixPattern = new RegExp(
-      `^(${financialPrefixes.join('|')})\\s+`,
-      'i'
-    );
-    cleaned = cleaned.replace(prefixPattern, '');
 
     // Final check for garbage after cleaning
     if (garbageValues.includes(cleaned.toLowerCase().trim())) {

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "data-extraction": {
+      "description": "Non-interactive local file-backed document extraction agent that returns JSON rows only.",
+      "mode": "primary",
+      "prompt": "{file:./prompts/data-extraction-agent.txt}",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    },
+    "data-analysis": {
+      "description": "Non-interactive local file-backed analysis agent that returns JSON rows only.",
+      "mode": "primary",
+      "prompt": "{file:./prompts/data-analysis-agent.txt}",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    }
+  },
+  "permission": {
+    "edit": "deny",
+    "bash": "deny",
+    "webfetch": "allow",
+    "websearch": "allow"
+  }
+}

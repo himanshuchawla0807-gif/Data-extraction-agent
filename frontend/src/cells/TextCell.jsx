@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import ContentEditable from 'react-contenteditable';
 import { ActionTypes } from '../utils';
 import CellModal from '../components/CellModal';
@@ -141,8 +141,6 @@ export default function TextCell({
     cleaned = cleaned.replace(/\|+/g, '');
     cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
 
-    // ✅ NEW: Strip financial descriptive prefixes for cleaner cell display
-    // Comment 2: Removed financialPrefixes stripping logic per user request
     // to preserve accurate values like "Net Debt" and "Total Addressable Market"
 
     // Final check for garbage after cleaning
@@ -208,64 +206,13 @@ export default function TextCell({
       displayValue = String(displayValue);
     }
   }
-  // ✅ AUTO-BADGE: Detect recommendation columns and generate badges automatically
-  const RECOMMENDATION_COLUMNS = [
-    'investment recommendation', 'recommendation', 'key opportunities',
-    'risk assessment', 'investment rating', 'buy/sell', 'outlook'
-  ];
-
-  const BADGE_MAPPINGS = {
-    // Green badges (positive)
-    'strong buy': { label: 'Strong Buy', color: 'green' },
-    'buy': { label: 'Buy', color: 'green' },
-    'outperform': { label: 'Outperform', color: 'green' },
-    'positive': { label: 'Positive', color: 'green' },
-    'bullish': { label: 'Bullish', color: 'green' },
-    'growth': { label: 'Growth', color: 'green' },
-    'opportunity': { label: 'Opportunity', color: 'green' },
-
-    // Yellow badges (neutral)
-    'hold': { label: 'Hold', color: 'yellow' },
-    'moderate buy': { label: 'Moderate Buy', color: 'yellow' },
-    'neutral': { label: 'Neutral', color: 'yellow' },
-    'stable': { label: 'Stable', color: 'yellow' },
-
-    // Red badges (negative)
-    'sell': { label: 'Sell', color: 'red' },
-    'strong sell': { label: 'Strong Sell', color: 'red' },
-    'risky': { label: 'Risky', color: 'red' },
-    'risk': { label: 'Risk', color: 'red' },
-    'underperform': { label: 'Underperform', color: 'red' },
-    'bearish': { label: 'Bearish', color: 'red' },
-    'caution': { label: 'Caution', color: 'red' },
-  };
-
   const BADGE_CONFIG = {
     computed: { color: 'purple', label: 'Computed', explanation: 'Calculated from other fields' },
     web_search: { color: 'blue', label: 'Web', explanation: 'Retrieved from web search' },
     variant: { color: 'green', label: 'Variant', explanation: 'Found via synonym search' },
   };
 
-  const getAutoBadge = () => {
-    // Check if this is a recommendation column
-    const isRecommendationColumn = RECOMMENDATION_COLUMNS.some(
-      col => columnId.toLowerCase().includes(col)
-    );
-
-    if (!isRecommendationColumn || !displayValue) return null;
-
-    // Check for badge keywords in the content
-    const lowerContent = displayValue.toLowerCase();
-    for (const [keyword, badge] of Object.entries(BADGE_MAPPINGS)) {
-      if (lowerContent.includes(keyword)) {
-        return { ...badge, explanation: displayValue };
-      }
-    }
-
-    return null;
-  };
-
-  const autoBadge = getAutoBadge();
+  const badgeConfig = value.badge ? (typeof value.badge === 'string' ? BADGE_CONFIG[value.badge] : value.badge) : null;
 
   function onChange(e) {
     if (isEditing) {
@@ -436,7 +383,6 @@ export default function TextCell({
               // ✅ FIX: Show blank instead of N/A for empty cells
               <span style={{
                 color: displayValue ? '#111827' : '#9CA3AF',
-                fontWeight: displayValue?.toString().trim().startsWith('$') ? 600 : 500,  // ✅ Restored bold for financials
                 fontStyle: displayValue ? 'normal' : 'italic'
               }}>
                 {displayValue}
@@ -446,13 +392,13 @@ export default function TextCell({
         )}
       </div>
 
-      {/* Badge Rendering - Use value.badge or auto-detected badge */}
-      {((value.badge ? (typeof value.badge === 'string' ? BADGE_CONFIG[value.badge] : value.badge) : null) || autoBadge) && (
+      {/* Badge Rendering */}
+      {badgeConfig && (
         <div style={{ marginLeft: '8px', flexShrink: 0 }}>
           <Badge
-            label={((value.badge ? (typeof value.badge === 'string' ? BADGE_CONFIG[value.badge] : value.badge) : null) || autoBadge)?.label}
-            color={((value.badge ? (typeof value.badge === 'string' ? BADGE_CONFIG[value.badge] : value.badge) : null) || autoBadge)?.color || 'gray'}
-            explanation={((value.badge ? (typeof value.badge === 'string' ? BADGE_CONFIG[value.badge] : value.badge) : null) || autoBadge)?.explanation}
+            label={badgeConfig?.label}
+            color={badgeConfig?.color || 'gray'}
+            explanation={badgeConfig?.explanation}
           />
         </div>
       )}
