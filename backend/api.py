@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,7 +15,6 @@ from fastapi.responses import FileResponse
 
 from .config import Settings, get_settings
 from .extraction_graph import run_extraction_workflow
-from .intent import fields_from_query
 from .model_catalog import provider_catalog
 from .models import ExtractionRequest, ExtractionResponse
 from .storage import SessionStore
@@ -33,10 +33,131 @@ def get_store(settings: Settings = Depends(get_settings)) -> SessionStore:
     return stores[key]
 
 
+def session_memory(store: SessionStore, session_id: str) -> str:
+    session = store.get_or_create(session_id)
+    messages = session.get("messages", [])[-12:]
+    lines = []
+    for message in messages:
+        role = message.get("role", "user")
+        content = " ".join(str(message.get("content", "")).split())
+        if content:
+            lines.append(f"{role}: {content[:1000]}")
+    return "\n".join(lines)
+
+
 async def send_ws(session_id: str, payload: Dict[str, Any]) -> None:
     websocket = connections.get(session_id)
     if websocket:
         await websocket.send_json(payload)
+
+
+def _normalize_label(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _table_columns(table_context: Optional[Dict[str, Any]]) -> List[str]:
+    columns = []
+    if not isinstance(table_context, dict):
+        return columns
+    for column in table_context.get("columns") or []:
+        if isinstance(column, dict):
+            label = column.get("label") or column.get("name") or column.get("id")
+        else:
+            label = column
+        label = str(label or "").strip()
+        if label and _normalize_label(label) not in {"document name", "select", "checkbox"}:
+            columns.append(label)
+    return columns
+
+
+def _extract_replacement_source(query: str) -> Optional[str]:
+    text = " ".join(str(query or "").split())
+    if not text:
+        return None
+    patterns = [
+        r"\binstead of\s+(?:the\s+)?(.+?)(?:$|[.?!,]|\s+(?:get|give|show|extract|provide|replace|can|could|please|tell|summarize|use|make|put)\b)",
+        r"\breplace\s+(?:the\s+)?(.+?)\s+with\b",
+        r"\brather than\s+(?:the\s+)?(.+?)(?:$|[.?!,]|\s+(?:get|give|show|extract|provide|use|make|put)\b)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            source = re.sub(r"^(?:the|a|an)\s+", "", match.group(1).strip(), flags=re.IGNORECASE)
+            return source.strip(" .,:;?!") or None
+    return None
+
+
+def _replacement_pair(
+    query: str,
+    table_context: Optional[Dict[str, Any]],
+    output_fields: List[str],
+) -> Optional[Dict[str, str]]:
+    source = _extract_replacement_source(query)
+    if not source or not output_fields:
+        return None
+
+    source_norm = _normalize_label(source)
+    if not source_norm:
+        return None
+    columns = _table_columns(table_context)
+    candidates = []
+    source_tokens = set(source_norm.split())
+    for label in columns:
+        label_norm = _normalize_label(label)
+        if not label_norm:
+            continue
+        if label_norm == source_norm:
+            candidates.append((3.0, label))
+        elif source_norm in label_norm or label_norm in source_norm:
+            candidates.append((2.0, label))
+        else:
+            label_tokens = set(label_norm.split())
+            overlap = len(source_tokens & label_tokens)
+            if overlap:
+                candidates.append((overlap / max(len(source_tokens), len(label_tokens)), label))
+    if not candidates:
+        return None
+    candidates.sort(reverse=True, key=lambda item: item[0])
+    old_label = candidates[0][1]
+    new_label = output_fields[0]
+    if _normalize_label(old_label) == _normalize_label(new_label):
+        return None
+    return {"old": old_label, "new": new_label}
+
+
+def _fields_from_rows(rows: List[Dict[str, Any]]) -> List[str]:
+    fields: List[str] = []
+    seen = set()
+    for row in rows:
+        for field in row.keys():
+            if field in {"Document Name", "file_name"}:
+                continue
+            if field not in seen:
+                fields.append(field)
+                seen.add(field)
+    return fields
+
+
+def _assistant_response(rows: List[Dict[str, Any]], fields: List[str], replacement: Optional[Dict[str, str]]) -> str:
+    if not rows:
+        return "I could not extract a supported answer from the uploaded files."
+
+    if len(rows) == 1 and 1 <= len(fields) <= 3:
+        parts = []
+        for field in fields:
+            value_text = str(rows[0].get(field, "") or "").strip()
+            if value_text and value_text.lower() != "not found":
+                parts.append(value_text if len(fields) == 1 else f"{field}: {value_text}")
+        if parts:
+            answer = " ".join(parts)
+            if replacement:
+                return f"I replaced {replacement['old']} with {replacement['new']}. {answer}"
+            return answer
+
+    field_text = ", ".join(fields)
+    if replacement:
+        return f"I replaced {replacement['old']} with {replacement['new']} and updated the table from the uploaded file."
+    return f"I extracted {len(fields)} field(s) from {len(rows)} file(s): {field_text}."
 
 
 @router.get("/health")
@@ -44,9 +165,11 @@ async def health(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     return {
         "service": "data-extraction-agent-open",
         "status": "ok",
-        "provider": settings.data_extraction_provider,
+        "engine": "opencode",
+        "provider": "opencode",
+        "opencode_api_provider": settings.selected_opencode_api_provider(),
         "model": settings.effective_model(),
-        "reasoning_effort": settings.openai_reasoning_effort if settings.data_extraction_provider == "openai" else None,
+        "reasoning_effort": settings.openai_reasoning_effort if settings.selected_opencode_api_provider() == "openai" else None,
         "provider_key_available": settings.provider_key_available(),
         "timestamp": datetime.now(UTC).isoformat(),
     }
@@ -191,13 +314,24 @@ async def extract_data(
     logger.info(
         "extract.http.start session_id=%s provider=%s model=%s fields=%s",
         session_id,
-        settings.data_extraction_provider,
+        "opencode",
         settings.effective_model(),
         request.fields,
     )
+    table_context = store.table_state(session_id)
+    documents = store.extract_texts(
+        session_id,
+        query=request.query or request.context or "",
+        fields=request.fields,
+        table_context=table_context,
+    )
+    memory = session_memory(store, session_id)
+    for document in documents:
+        document["memory"] = memory
+        document["table_context"] = table_context
     rows = await run_extraction_workflow(
         settings,
-        store.extract_texts(session_id, query=request.query or request.context or "", fields=request.fields),
+        documents,
         request.fields,
         request.query or request.context or "",
     )
@@ -206,7 +340,7 @@ async def extract_data(
     return ExtractionResponse(
         extraction_id=str(uuid.uuid4()),
         extracted_fields={"rows": rows},
-        confidence_score=0.8 if settings.data_extraction_provider != "mock" else 0.65,
+        confidence_score=0.8,
     )
 
 
@@ -232,20 +366,26 @@ async def run_and_stream_extraction(
     query: str,
     settings: Settings,
     store: SessionStore,
+    table_context: Optional[Dict[str, Any]] = None,
 ) -> None:
     fields = [field for field in fields if field and field != "Document Name"]
-    if not fields:
-        fields = ["Summary"]
+    query = query or ""
 
     logger.info(
         "extract.ws.start session_id=%s provider=%s model=%s fields=%s query=%r",
         session_id,
-        settings.data_extraction_provider,
+        "opencode",
         settings.effective_model(),
         fields,
         query[:200],
     )
-    await send_ws(session_id, {"type": "extraction_progress", "status": "started", "message": "Starting extraction"})
+    await send_ws(session_id, {
+        "type": "extraction_progress",
+        "status": "started",
+        "message": "Starting extraction" if fields else "Starting agent extraction and inferring columns",
+    })
+
+    created_fields = set()
     for index, field in enumerate(fields, start=1):
         await send_ws(session_id, {
             "type": "create_column",
@@ -253,19 +393,30 @@ async def run_and_stream_extraction(
             "column_type": "text",
             "column_index": index,
         })
+        created_fields.add(field)
 
-    documents = store.extract_texts(session_id, query=query, fields=fields)
+    effective_table_context = table_context or store.table_state(session_id)
+    documents = store.extract_texts(
+        session_id,
+        query=query,
+        fields=fields,
+        table_context=effective_table_context,
+    )
+    memory = session_memory(store, session_id)
+    for document in documents:
+        document["memory"] = memory
+        document["table_context"] = effective_table_context
     logger.info("extract.ws.documents session_id=%s document_count=%d", session_id, len(documents))
     try:
         rows = await run_extraction_workflow(settings, documents, fields, query)
         store.update_table_rows(session_id, rows)
         logger.info("extract.ws.provider_complete session_id=%s rows=%d", session_id, len(rows))
     except Exception as exc:
-        logger.exception("extract.ws.failed session_id=%s provider=%s model=%s", session_id, settings.data_extraction_provider, settings.effective_model())
+        logger.exception("extract.ws.failed session_id=%s provider=%s model=%s", session_id, "opencode", settings.effective_model())
         await send_ws(session_id, {
             "type": "error",
             "message": str(exc),
-            "provider": settings.data_extraction_provider,
+            "provider": "opencode",
             "model": settings.effective_model(),
         })
         await send_ws(session_id, {
@@ -276,6 +427,31 @@ async def run_and_stream_extraction(
             "error": str(exc),
         })
         return
+
+    output_fields = _fields_from_rows(rows)
+    replacement = _replacement_pair(query, effective_table_context, output_fields)
+    if replacement:
+        await send_ws(session_id, {
+            "type": "rename_column",
+            "old_column_name": replacement["old"],
+            "new_column_name": replacement["new"],
+        })
+
+    for row_index, row in enumerate(rows):
+        for field in row.keys():
+            if field not in {"Document Name", "file_name"} and field not in created_fields:
+                fields.append(field)
+                created_fields.add(field)
+                await send_ws(session_id, {
+                    "type": "create_column",
+                    "column_name": field,
+                    "column_type": "text",
+                    "column_index": len(created_fields),
+                })
+
+    fields = [field for field in fields if field in created_fields]
+    if not fields:
+        fields = output_fields
 
     for row_index, row in enumerate(rows):
         file_name = row.get("Document Name", f"Document {row_index + 1}")
@@ -288,19 +464,20 @@ async def run_and_stream_extraction(
                     "column_name": field,
                     "extracted_value": row.get(field, "Not found"),
                     "file_name": file_name,
-                    "badge": "Mock" if settings.data_extraction_provider == "mock" else settings.data_extraction_provider,
-                    "citations": [{"source": file_name, "excerpt": str(row.get(field, ""))[:180]}],
-                    "reasoning": "Generated by the configured provider router.",
+                    "badge": "opencode",
+                    "citations": [store.supporting_citation(session_id, file_name, field, row.get(field, ""))],
+                    "reasoning": f"Extracted by OpenCode using {settings.effective_model()} with the uploaded local file and generated text index.",
                     "is_placeholder": False,
                 },
             })
 
+    response_text = _assistant_response(rows, fields, replacement)
     await send_ws(session_id, {
         "type": "extraction_query_response",
-        "message": f"Extracted {len(fields)} field(s) from {len(rows)} file(s).",
-        "response": f"Extracted {len(fields)} field(s) from {len(rows)} file(s): {', '.join(fields)}.",
+        "message": response_text,
+        "response": response_text,
         "extracted_fields": fields,
-        "provider": settings.data_extraction_provider,
+        "provider": "opencode",
     })
     await send_ws(session_id, {
         "type": "extraction_complete",
@@ -341,8 +518,8 @@ async def websocket_endpoint(
                 await websocket.send_json({"type": "pong", "timestamp": datetime.utcnow().isoformat()})
             elif message_type in {"start_extraction", "extraction_query", "column_query", "refine_column"}:
                 fields = data.get("fields") or data.get("columns") or []
-                if not fields and data.get("query"):
-                    fields = fields_from_query(data.get("query") or "")
+                if fields:
+                    fields = [str(field).strip() for field in fields if str(field).strip()]
                 logger.info("websocket.extraction_fields session_id=%s fields=%s", session_id, fields)
                 asyncio.create_task(run_and_stream_extraction(
                     session_id=session_id,
@@ -350,7 +527,28 @@ async def websocket_endpoint(
                     query=data.get("query") or data.get("message") or "",
                     settings=settings,
                     store=store,
+                    table_context=data.get("table_context") or data.get("tableContext"),
                 ))
+            elif message_type == "update_columns":
+                session = store.get_or_create(session_id)
+                current = session.get("table_data") or {"columns": [], "rows": []}
+                columns = data.get("columns") or []
+                current["columns"] = [
+                    column if isinstance(column, dict) else {"id": str(column), "label": str(column)}
+                    for column in columns
+                ]
+                session["table_data"] = current
+                store.save()
+                await websocket.send_json({"type": "columns_updated", "column_count": len(columns)})
+            elif message_type == "update_table_context":
+                session = store.get_or_create(session_id)
+                context = data.get("table_context") or data.get("tableContext") or {}
+                session["table_data"] = {
+                    "columns": context.get("columns") or [],
+                    "rows": context.get("rows") or [],
+                }
+                store.save()
+                await websocket.send_json({"type": "table_context_updated"})
             elif message_type == "get_status":
                 await websocket.send_json({"type": "status_update", "status": "ready"})
             else:
