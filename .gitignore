@@ -34,3 +34,4 @@ tmp/
 .tmp/
 logs/
 *.log
+.gstack/
