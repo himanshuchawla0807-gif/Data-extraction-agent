@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$DIR" || exit 1
+PYTHON_CMD=python3
+if [ -x "$DIR/.venv/bin/python" ]; then
+  PYTHON_CMD="$DIR/.venv/bin/python"
+fi
+exec "$PYTHON_CMD" "$DIR/cli.py" "$@"

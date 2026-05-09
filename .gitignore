@@ -35,3 +35,7 @@ tmp/
 logs/
 *.log
 .gstack/
+.playwright-cli/
+.codex/
+.DS_Store
+Thumbs.db

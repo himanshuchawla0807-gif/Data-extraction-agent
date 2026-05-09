@@ -1,10 +1,21 @@
 {
   "name": "data-extraction-agent-open",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "description": "Local-first OpenCode-backed data extraction agent for document-to-table workflows.",
+  "license": "MIT",
   "type": "module",
+  "bin": {
+    "oriplex-data": "./cli.py",
+    "oriplex-gateway": "./cli.py"
+  },
   "scripts": {
-    "dev": "python cli.py",
+    "dev": "node scripts/oriplex-gateway.mjs gateway",
+    "gateway": "node scripts/oriplex-gateway.mjs gateway",
+    "gateway:start": "node scripts/oriplex-gateway.mjs start",
+    "gateway:setup": "node scripts/oriplex-gateway.mjs setup",
+    "gateway:doctor": "node scripts/oriplex-gateway.mjs doctor",
+    "models": "node scripts/oriplex-gateway.mjs models",
     "dev:backend": "python -m uvicorn backend.main:app --host 0.0.0.0 --port 8101 --reload",
     "dev:frontend": "npm --prefix frontend run dev -- --host 0.0.0.0 --port 5173",
     "test": "python -m pytest tests",

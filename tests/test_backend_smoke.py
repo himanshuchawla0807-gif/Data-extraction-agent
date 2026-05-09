@@ -26,6 +26,18 @@ def test_provider_catalog_exposes_only_real_providers():
     assert blocked_provider not in catalog["models"]
 
 
+def test_provider_catalog_uses_current_model_presets():
+    catalog = provider_catalog()
+    models = catalog["models"]
+
+    assert models["anthropic"][0]["model"] == "anthropic/claude-opus-4-7"
+    assert models["anthropic"][1]["model"] == "anthropic/claude-sonnet-4-6"
+    assert models["openai"][0]["model"] == "openai/gpt-5.5"
+    assert any(preset["model"] == "openai/gpt-5.4-mini" for preset in models["openai"])
+    assert models["gemini"][0]["model"] == "google-vertex/gemini-3-pro-preview"
+    assert models["openrouter"][0]["custom"] is True
+
+
 def test_workflow_preserves_provider_schema_for_latest_query(monkeypatch):
     import asyncio
 
