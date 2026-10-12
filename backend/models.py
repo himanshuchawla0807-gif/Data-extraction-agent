@@ -14,6 +14,7 @@ class Citation(BaseModel):
 
 
 class ExtractionRequest(BaseModel):
+    session_id: Optional[str] = None
     document_ids: List[str] = Field(default_factory=list)
     fields: List[str] = Field(default_factory=list)
     query: Optional[str] = None
@@ -24,7 +25,7 @@ class ExtractionResponse(BaseModel):
     extraction_id: str
     extracted_fields: Dict[str, Any]
     citations: List[Citation] = Field(default_factory=list)
-    confidence_score: float = 0.75
+    confidence_score: Optional[float] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     error: Optional[str] = None
 
@@ -37,4 +38,3 @@ class SessionFile(BaseModel):
     size: int
     upload_time: str
     status: str = "uploaded"
-

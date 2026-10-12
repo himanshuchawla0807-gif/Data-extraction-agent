@@ -1,7 +1,7 @@
-import React, { useEffect, useReducer, useState, useRef, useCallback, useMemo } from 'react';
+import React, { useEffect, useReducer, useState, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import './style.css';
 import './animations.css'; // ✅ Import animations
-import Table from './Table';
+
 import FileUploadPage from './pages/FileUploadPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { AIChatInput } from './components/AIChatInput';
@@ -11,7 +11,7 @@ import TypingText from './components/TypingText';
 import { ResizableSidebar } from './components/ResizableSidebar';
 import Sidebar from './Sidebar'; // ✅ NEW: Import new chat-focused Sidebar
 import SourceViewer from './components/SourceViewer'; // ✅ NEW: Source Viewer
-import PDFViewer from './components/PDFViewer'; // ✅ NEW: PDF Sidebar Viewer
+const PDFViewer = lazy(() => import('./components/PDFViewer'));
 import { SourceViewerContext } from './AppContext'; // ✅ NEW: Context
 import websocketService from './services/websocket';
 import chatWebsocketService from './services/chatWebsocket';
@@ -140,7 +140,6 @@ if (typeof window !== 'undefined') {
 }
 
 // FEATURE FLAG
-const DISABLE_V8_DEFAULT = true; // Set to false to enable by default after testing
 
 // ✅ TEST FUNCTION (Temporary)
 if (typeof window !== 'undefined') {
@@ -169,7 +168,8 @@ if (typeof window !== 'undefined') {
 function reducer(state, action) {
   switch (action.type) {
     case ActionTypes.ADD_OPTION_TO_COLUMN:
-      const optionIndex = state.columns.findIndex(
+      {
+const optionIndex = state.columns.findIndex(
         column => column.id === action.columnId
       );
       return update(state, {
@@ -187,21 +187,25 @@ function reducer(state, action) {
           },
         },
       });
+}
     case ActionTypes.ADD_ROW:
       // FIXED: Use action.rowData if provided, otherwise empty object
-      const newRowData = action.rowData || {};
+      {
+const newRowData = action.rowData || {};
       console.log('[REDUCER] ADD_ROW with data:', newRowData);
       return update(state, {
         skipReset: { $set: true },
         data: { $push: [newRowData] },
       });
+}
     case ActionTypes.ADD_MULTIPLE_ROWS:
       return update(state, {
         skipReset: { $set: true },
         data: { $push: action.rows },
       });
     case ActionTypes.UPDATE_COLUMN_TYPE:
-      const typeIndex = state.columns.findIndex(
+      {
+const typeIndex = state.columns.findIndex(
         column => column.id === action.columnId
       );
       switch (action.dataType) {
@@ -320,13 +324,15 @@ function reducer(state, action) {
         default:
           return state;
       }
+}
     case ActionTypes.REFINE_COLUMN: // ✅ NEW Action for V8 support
       return update(state, {
         skipReset: { $set: true },
         columns: { $set: refineColumn(state.columns, action.columnId, action.options) }
       });
     case ActionTypes.UPDATE_COLUMN_HEADER:
-      console.log(`[REDUCER] UPDATE_COLUMN_HEADER: Renaming`, action.columnId, `to "${action.label}"`);
+      {
+console.log(`[REDUCER] UPDATE_COLUMN_HEADER: Renaming`, action.columnId, `to "${action.label}"`);
       const index = state.columns.findIndex(
         column => column.id === action.columnId
       );
@@ -341,6 +347,7 @@ function reducer(state, action) {
         skipReset: { $set: true },
         columns: { [index]: { label: { $set: action.label } } },
       });
+}
     case ActionTypes.UPDATE_CELL:
       // ✅ CRITICAL FIX: Auto-expand table if rowIndex exceeds current data length
       if (action.rowIndex >= state.data.length) {
@@ -376,7 +383,8 @@ function reducer(state, action) {
         },
       });
     case ActionTypes.ADD_COLUMN_TO_LEFT:
-      const leftIndex = state.columns.findIndex(
+      {
+const leftIndex = state.columns.findIndex(
         column => column.id === action.columnId
       );
       let leftId = shortId();
@@ -405,8 +413,10 @@ function reducer(state, action) {
           ],
         },
       });
+}
     case ActionTypes.ADD_COLUMN_TO_RIGHT:
-      const rightIndex = state.columns.findIndex(
+      {
+const rightIndex = state.columns.findIndex(
         column => column.id === action.columnId
       );
       const rightId = action.newColumnId || shortId();
@@ -435,8 +445,10 @@ function reducer(state, action) {
           ],
         },
       });
+}
     case ActionTypes.DELETE_COLUMN:
-      const deleteIndex = state.columns.findIndex(
+      {
+const deleteIndex = state.columns.findIndex(
         column => column.id === action.columnId
       );
       if (deleteIndex < 0) return state; // Column not found
@@ -511,9 +523,11 @@ function reducer(state, action) {
         skipReset: { $set: true },
         columns: { $set: newColumns },
       });
+}
     case ActionTypes.HIDE_COLUMN:
       // ✅ Hide column (set hidden flag, don't delete)
-      const hideIndex = state.columns.findIndex(
+      {
+const hideIndex = state.columns.findIndex(
         column => column.id === action.columnId
       );
       if (hideIndex < 0) return state;
@@ -525,9 +539,11 @@ function reducer(state, action) {
           }
         }
       });
+}
     case ActionTypes.SHOW_COLUMN:
       // ✅ Show hidden column
-      const showIndex = state.columns.findIndex(
+      {
+const showIndex = state.columns.findIndex(
         column => column.id === action.columnId
       );
       if (showIndex < 0) return state;
@@ -539,10 +555,12 @@ function reducer(state, action) {
           }
         }
       });
+}
     case ActionTypes.RENAME_COLUMN:
       // ✅ NEW: Rename column in-place (for replace operations)
       // Find the column by ID if provided, otherwise fallback to Label (legacy)
-      const renameIndex = state.columns.findIndex(
+      {
+const renameIndex = state.columns.findIndex(
         column => (action.columnId && column.id === action.columnId) || column.label === action.oldLabel
       );
 
@@ -569,6 +587,7 @@ function reducer(state, action) {
         skipReset: { $set: true },
         columns: { $set: renamedColumns },
       });
+}
     case ActionTypes.DELETE_ROWS:
       return update(state, {
         skipReset: { $set: true },
@@ -577,7 +596,8 @@ function reducer(state, action) {
         },
       });
     case ActionTypes.CLEANUP_STALE_ROWS:
-      const validNames = action.validDocNames instanceof Set ? action.validDocNames : new Set(action.validDocNames || []);
+      {
+const validNames = action.validDocNames instanceof Set ? action.validDocNames : new Set(action.validDocNames || []);
       const cleanedData = state.data.filter(row =>
         row && validNames.has(row['Document Name'])
       );
@@ -606,6 +626,7 @@ function reducer(state, action) {
         skipReset: { $set: true },
         data: { $set: cleanedData }
       });
+}
 
     case ActionTypes.RESTORE_TABLE_STATE: {
       const { columns, rows } = action.payload;
@@ -716,7 +737,8 @@ function reducer(state, action) {
       return update(state, { skipReset: { $set: true } });
     case ActionTypes.TOGGLE_COLUMN_CITATIONS:
       // ✅ PHASE 3.4: Toggle citation visibility for a specific column
-      const citationIndex = state.columns.findIndex(
+      {
+const citationIndex = state.columns.findIndex(
         column => column.id === action.columnId
       );
       return update(state, {
@@ -725,6 +747,7 @@ function reducer(state, action) {
           [citationIndex]: { showCitations: { $set: action.showCitations } }
         },
       });
+}
     // ✅ NEW: Smart Animation Targeting
     // Backend sends which rows/columns should show "Extracting..." animation
     case ActionTypes.SET_EXTRACTING_CELLS: {
@@ -984,7 +1007,6 @@ function App() {
   const stateRef = useRef(state);
 
   // ✅ Feature Flag State (Moved here to access 'state')
-  const [useV8Table, setUseV8Table] = useState(!DISABLE_V8_DEFAULT);
   const [schemaVersion, setSchemaVersion] = useState(0);
 
   // Bump schema version when columns change length or IDs
@@ -1606,7 +1628,7 @@ function App() {
         if (attempts >= MAX_ATTEMPTS) {
           logger.debug('❌ [POLL] Max attempts reached. Stopping checks.');
           clearInterval(pollInterval);
-          // Optional: Force user to chat anyway or show error? 
+          // Optional: Force user to chat anyway or show error?
           // User didn't specify, but stopping is safer.
         }
       }, 45000); // 45 seconds per user request
@@ -1919,7 +1941,7 @@ function App() {
       setUploadStatus('processing');
 
       // ✅ FIX: Do NOT call onComplete here. We wait for backend signal.
-      // callbacks.onComplete(); 
+      // callbacks.onComplete();
 
       // Expecting 'indexingComplete' via WebSocket to handle page switch
       logger.debug('[UPLOAD] Files uploaded, waiting for indexing signal...');
@@ -3290,8 +3312,7 @@ function App() {
                 boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                 scrollBehavior: 'smooth'
               }}>
-              {useV8Table ? (
-                <TableV8
+              <TableV8
                   key={`v8-${schemaVersion}`}
                   columns={state.columns}
                   data={state.data}
@@ -3299,15 +3320,6 @@ function App() {
                   skipReset={state.skipReset}
                   updatingColumns={updatingColumns}
                 />
-              ) : (
-                <Table
-                  columns={state.columns}
-                  data={state.data}
-                  dispatch={dispatchWithHistory}
-                  skipReset={state.skipReset}
-                  updatingColumns={updatingColumns}
-                />
-              )}
             </div>
           </div>
 
@@ -3323,7 +3335,7 @@ function App() {
         highlightValue={highlightValue}
       />
       {/* PDF Viewer Sidebar */}
-      <PDFViewer
+      {pdfViewerOpen && <Suspense fallback={<div>Loading document...</div>}><PDFViewer
         isOpen={pdfViewerOpen}
         onClose={() => setPdfViewerOpen(false)}
         filename={pdfViewerData.filename}
@@ -3331,7 +3343,7 @@ function App() {
         citations={pdfViewerData.citations}
         sessionId={pdfViewerData.sessionId}
         sessionFilesMap={sessionFilesMap}  // ✅ NEW: Pass mapping for filename resolution
-      />
+      /></Suspense>}
     </SourceViewerContext.Provider>
   );
 }

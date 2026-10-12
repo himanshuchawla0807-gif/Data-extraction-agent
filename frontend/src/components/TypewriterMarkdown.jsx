@@ -5,7 +5,7 @@ import './TypewriterText.css';
 /**
  * TypewriterMarkdown - Typewriter effect with react-markdown rendering
  * Shows inline Oriplex logo spinner that fades away on completion
- * 
+ *
  * Props:
  *  - content: Full text content to display
  *  - speed: Characters per frame (default: 3)

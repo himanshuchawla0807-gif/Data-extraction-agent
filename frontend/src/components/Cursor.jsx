@@ -27,6 +27,3 @@ export const Cursor = ({ blink = false, loading = false }) => {
 };
 
 export default Cursor;
-
-
-

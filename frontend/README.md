@@ -200,6 +200,6 @@ Proprietary - Oriplex 2025
 
 ---
 
-**Status**: ✅ Production Ready  
-**Version**: 2.0.0  
+**Status**: ✅ Production Ready<br>
+**Version**: 2.0.0<br>
 **Last Updated**: October 16, 2025

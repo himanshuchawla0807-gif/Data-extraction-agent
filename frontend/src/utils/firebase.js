@@ -17,7 +17,8 @@ let googleProvider = null;
 
 try {
     if (firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId) {
-        app = initializeApp(firebaseConfig);
+        if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) throw new Error('Firebase web configuration is missing');
+    app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         googleProvider = new GoogleAuthProvider();
         console.log('[Firebase] Initialized for project:', firebaseConfig.projectId);

@@ -17,7 +17,7 @@ const Delay = ({ children, delay }) => {
 // Cursor component - blinks when waiting
 const Cursor = ({ blink, loading }) => {
   if (!loading) return null;
-  
+
   return (
     <motion.span
       className={`typing-cursor ${blink ? 'blink' : ''}`}
@@ -33,14 +33,14 @@ const Cursor = ({ blink, loading }) => {
 const randomizer = (probabilities) => {
   const random = Math.random();
   let cumulative = 0;
-  
+
   for (let prob of probabilities) {
     cumulative += prob.probability;
     if (random <= cumulative) {
       return prob.value;
     }
   }
-  
+
   return probabilities[0].value;
 };
 
@@ -83,12 +83,12 @@ export default function TypingText({ text, onComplete }) {
         const timing = randomizer(probabilities);
         return acc + timing;
       }, 0);
-      
+
       const timer = setTimeout(() => {
         setFinished(true);
         if (onComplete) onComplete();
       }, totalTime + 100);
-      
+
       return () => clearTimeout(timer);
     }
   }, [text, finished, onComplete]);
@@ -159,8 +159,3 @@ function AnimateCursorOnWait({ loading }) {
     </motion.div>
   );
 }
-
-
-
-
-

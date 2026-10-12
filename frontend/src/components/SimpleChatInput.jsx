@@ -4,12 +4,12 @@
  */
 
 import React, { useState } from "react";
-import { 
-  Lightbulb, 
-  Mic, 
-  Globe, 
-  Paperclip, 
-  Send 
+import {
+  Lightbulb,
+  Mic,
+  Globe,
+  Paperclip,
+  Send
 } from "lucide-react";
 
 const SimpleChatInput = ({ onSendMessage = () => {} }) => {
@@ -203,5 +203,3 @@ const SimpleChatInput = ({ onSendMessage = () => {} }) => {
 };
 
 export default SimpleChatInput;
-
-

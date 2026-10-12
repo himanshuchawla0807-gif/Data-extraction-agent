@@ -236,6 +236,7 @@ export default function Table({
                       ...header.getContext(),
                       // Adapter to match v7 header props if needed by Header.jsx
                       column: {
+                        ...header.column.columnDef,
                         ...header.column,
                         id: header.column.id,
                         isResizing: header.column.getIsResizing(),
@@ -261,6 +262,7 @@ export default function Table({
                         // Pass dataDispatch to header if needed (legacy location inside column)
                         dataDispatch,
                       },
+                      setSortBy: sorting => table.setSorting(sorting),
                       // Fix: Pass dataDispatch as top-level prop as expected by Header.jsx
                       dataDispatch,
                     })}
@@ -290,7 +292,7 @@ export default function Table({
                   />
                 </div>
                 {row.getVisibleCells().map(cell => {
-                  if (cell.column.id === Constants.ADD_COLUMN_ID) {
+                  if (String(cell.column.id) === String(Constants.ADD_COLUMN_ID)) {
                     return (
                       <div key={cell.id} className="td add-column-cell" style={{ width: cell.column.getSize() }}>
                         {/* Empty cell below the add column button */}
@@ -321,6 +323,7 @@ export default function Table({
                           index: row.index
                         },
                         column: {
+                          ...cell.column.columnDef,
                           ...cell.column,
                           id: cell.column.id
                         },

@@ -318,4 +318,3 @@ const WorkspaceLayout = ({ files = [], onSendMessage = () => { }, children }) =>
 };
 
 export default WorkspaceLayout;
-

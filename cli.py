@@ -218,7 +218,7 @@ def configure_gateway() -> None:
 
 def current_config_panel() -> Panel:
     env = read_env()
-    provider = env.get("OPENCODE_API_PROVIDER", "anthropic")
+    provider = env.get("OPENCODE_API_PROVIDER", "gemini")
     model = env.get("OPENCODE_MODEL", "(not set)")
     key_name = API_KEY_ENV.get(provider, "")
     key_state = "present" if key_name and env.get(key_name) else "missing"
@@ -289,7 +289,7 @@ def start_frontend() -> subprocess.Popen[str] | None:
 
 def print_live_panel() -> None:
     env = read_env()
-    provider = env.get("OPENCODE_API_PROVIDER", "anthropic")
+    provider = env.get("OPENCODE_API_PROVIDER", "gemini")
     model = env.get("OPENCODE_MODEL", "(not set)")
 
     body = Table.grid(padding=(0, 2))

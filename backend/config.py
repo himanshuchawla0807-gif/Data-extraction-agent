@@ -17,14 +17,21 @@ class Settings(BaseSettings):
 
     app_name: str = "Data Extraction Agent Open"
     app_env: str = "development"
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8101
     cors_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
     cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1):\d+$"
     frontend_url: str = "http://localhost:5173"
 
-    data_extraction_provider: str = "opencode"
-    data_extraction_model: str = "opencode"
+    data_extraction_provider: str = "gemini"
+    data_extraction_model: str = "gemini-3.8-flash"
+    google_cloud_project: Optional[str] = None
+    google_cloud_location: str = "global"
+    model_timeout_seconds: int = 120
+    max_upload_files: int = 20
+    max_document_pages: int = 1000
+    local_development_mode: bool = False
+    access_token: Optional[str] = None
 
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-5.5"
@@ -34,11 +41,11 @@ class Settings(BaseSettings):
     google_api_key: Optional[str] = None
     google_generative_ai_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
-    gemini_model: str = "gemini-3-pro-preview"
+    gemini_model: str = "gemini-3.8-flash"
     openrouter_api_key: Optional[str] = None
     openrouter_model: str = ""
-    opencode_api_provider: str = "anthropic"
-    opencode_model: str = "anthropic/claude-sonnet-4-6"
+    opencode_api_provider: str = "gemini"
+    opencode_model: str = "google-vertex/gemini-3.8-flash"
     opencode_command: str = "opencode"
     opencode_timeout_seconds: int = 300
     opencode_browser_enabled: bool = True
@@ -69,7 +76,7 @@ class Settings(BaseSettings):
         return False
 
     def effective_model(self) -> str:
-        return self.opencode_model or "opencode-default"
+        return self.gemini_model if self.data_extraction_provider == "gemini" else self.opencode_model
 
     def selected_opencode_api_provider(self) -> str:
         provider = (self.opencode_api_provider or "").lower().strip()

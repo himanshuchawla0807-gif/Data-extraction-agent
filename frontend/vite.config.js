@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -26,11 +25,6 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
-    },
-  },
-  resolve: {
-    alias: {
-      "#minpath": path.resolve(__dirname, "./node_modules/vfile/lib/minpath.js"),
     },
   },
   build: {

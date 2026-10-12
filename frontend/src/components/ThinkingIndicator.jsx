@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
  */
 export default function ThinkingIndicator({ message }) {
   const [messageIndex, setMessageIndex] = useState(0);
-  
+
   // Rotating text messages (no icons/emojis as per user request)
   const thinkingMessages = [
     "Analyzing your query...",
@@ -17,7 +17,7 @@ export default function ThinkingIndicator({ message }) {
     "This may take time for larger documents...",
     "Almost there..."
   ];
-  
+
   // Rotate messages every 4 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -25,10 +25,10 @@ export default function ThinkingIndicator({ message }) {
     }, 4000);
     return () => clearInterval(interval);
   }, []);
-  
+
   // Use provided message if available, otherwise use rotating messages
   const displayMessage = message || thinkingMessages[messageIndex];
-  
+
   return (
     <div style={{
       display: 'flex',
@@ -82,7 +82,7 @@ export default function ThinkingIndicator({ message }) {
           {displayMessage}
         </motion.div>
       </AnimatePresence>
-      
+
       {/* CSS for gradient animation */}
       <style>{`
         @keyframes gradient-wave {

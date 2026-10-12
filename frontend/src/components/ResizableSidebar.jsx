@@ -4,28 +4,28 @@ export const ResizableSidebar = ({ children, initialWidth = 480, minWidth = 320,
   const [width, setWidth] = useState(initialWidth);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef(null);
-  
+
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isResizing) return;
-      
+
       const newWidth = e.clientX;
       if (newWidth >= minWidth && newWidth <= maxWidth) {
         setWidth(newWidth);
       }
     };
-    
+
     const handleMouseUp = () => {
       setIsResizing(false);
     };
-    
+
     if (isResizing) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = 'ew-resize';
       document.body.style.userSelect = 'none';
     }
-    
+
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
@@ -33,17 +33,17 @@ export const ResizableSidebar = ({ children, initialWidth = 480, minWidth = 320,
       document.body.style.userSelect = '';
     };
   }, [isResizing, minWidth, maxWidth]);
-  
+
   const handleMouseDown = (e) => {
     setIsResizing(true);
     e.preventDefault();
   };
-  
+
   return (
-    <div 
-      ref={sidebarRef} 
-      style={{ 
-        width: `${width}px`, 
+    <div
+      ref={sidebarRef}
+      style={{
+        width: `${width}px`,
         position: 'relative',
         height: '100vh',
         borderRight: '1px solid #e5e7eb',
@@ -55,7 +55,7 @@ export const ResizableSidebar = ({ children, initialWidth = 480, minWidth = 320,
       }}
     >
       {children}
-      
+
       {/* Resize Handle */}
       <div
         onMouseDown={handleMouseDown}
@@ -84,4 +84,3 @@ export const ResizableSidebar = ({ children, initialWidth = 480, minWidth = 320,
     </div>
   );
 };
-

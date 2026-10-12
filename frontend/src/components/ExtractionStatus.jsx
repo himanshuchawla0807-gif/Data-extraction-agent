@@ -9,7 +9,7 @@ const ExtractionStatus = ({ status, files, fields, results }) => {
   // Calculate overall progress
   const calculateProgress = () => {
     if (!files || files.length === 0) return 0;
-    
+
     const completedFiles = files.filter(f => f.status === 'complete').length;
     return Math.round((completedFiles / files.length) * 100);
   };
@@ -60,10 +60,10 @@ const ExtractionStatus = ({ status, files, fields, results }) => {
     <div className="extraction-status-container" style={{ padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px', marginBottom: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Extraction Status</h3>
-        <div style={{ 
-          padding: '5px 15px', 
-          backgroundColor: getStatusColor(status), 
-          color: '#fff', 
+        <div style={{
+          padding: '5px 15px',
+          backgroundColor: getStatusColor(status),
+          color: '#fff',
           borderRadius: '20px',
           fontSize: '14px',
           fontWeight: 600
@@ -193,10 +193,10 @@ const ExtractionStatus = ({ status, files, fields, results }) => {
           <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>
             Extraction Results
           </h4>
-          <div style={{ 
-            padding: '15px', 
-            backgroundColor: '#fff', 
-            border: '1px solid #ddd', 
+          <div style={{
+            padding: '15px',
+            backgroundColor: '#fff',
+            border: '1px solid #ddd',
             borderRadius: '4px',
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
@@ -234,5 +234,3 @@ const ExtractionStatus = ({ status, files, fields, results }) => {
 };
 
 export default ExtractionStatus;
-
-

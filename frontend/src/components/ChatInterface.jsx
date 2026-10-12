@@ -6,9 +6,9 @@ import './ChatInterface.css';
  * ChatInterface Component - Conversational interface with memory
  * Shows chat history and maintains context across messages
  */
-export default function ChatInterface({ 
-  sessionId, 
-  onSendMessage, 
+export default function ChatInterface({
+  sessionId,
+  onSendMessage,
   conversationHistory = [],
   isMinimized = false,
   onToggleMinimize
@@ -47,14 +47,14 @@ export default function ChatInterface({
         content: inputValue,
         timestamp: new Date()
       };
-      
+
       setMessages(prev => [...prev, userMessage]);
-      
+
       // Send to backend
       if (onSendMessage) {
         onSendMessage(inputValue);
       }
-      
+
       setInputValue('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -72,7 +72,7 @@ export default function ChatInterface({
   if (isMinimized) {
     return (
       <div className="chat-interface-minimized">
-        <button 
+        <button
           className="chat-restore-btn"
           onClick={onToggleMinimize}
           title="Open chat"
@@ -96,7 +96,7 @@ export default function ChatInterface({
           <h3>Chat with Oriplex</h3>
         </div>
         <div className="chat-header-actions">
-          <button 
+          <button
             className="chat-action-btn"
             onClick={onToggleMinimize}
             title="Minimize"
@@ -117,7 +117,7 @@ export default function ChatInterface({
         ) : (
           <>
             {messages.map((msg, idx) => (
-              <div 
+              <div
                 key={idx}
                 className={`chat-message ${msg.role === 'user' ? 'user-message' : 'assistant-message'}`}
               >
@@ -168,4 +168,3 @@ export default function ChatInterface({
     </div>
   );
 }
-

@@ -11,6 +11,3 @@ export const Delay = ({ children, delay }) => {
 
   return <motion.span layout="size">{done ? children : null}</motion.span>;
 };
-
-
-

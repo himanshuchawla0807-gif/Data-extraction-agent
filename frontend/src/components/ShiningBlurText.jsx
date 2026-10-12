@@ -93,4 +93,3 @@ const ShiningBlurText = ({
 };
 
 export default ShiningBlurText;
-

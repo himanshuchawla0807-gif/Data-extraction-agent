@@ -18,6 +18,7 @@ from .extraction_graph import run_extraction_workflow
 from .model_catalog import provider_catalog
 from .models import ExtractionRequest, ExtractionResponse
 from .storage import SessionStore
+from .auth import authenticate, principal_id
 
 router = APIRouter()
 connections: Dict[str, WebSocket] = {}
@@ -130,7 +131,7 @@ def _fields_from_rows(rows: List[Dict[str, Any]]) -> List[str]:
     seen = set()
     for row in rows:
         for field in row.keys():
-            if field in {"Document Name", "file_name"}:
+            if field in {"Document Name", "file_name", "__evidence__"}:
                 continue
             if field not in seen:
                 fields.append(field)
@@ -165,8 +166,8 @@ async def health(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     return {
         "service": "data-extraction-agent-open",
         "status": "ok",
-        "engine": "opencode",
-        "provider": "opencode",
+        "engine": "native-gemini",
+        "provider": settings.data_extraction_provider,
         "opencode_api_provider": settings.selected_opencode_api_provider(),
         "model": settings.effective_model(),
         "reasoning_effort": settings.openai_reasoning_effort if settings.selected_opencode_api_provider() == "openai" else None,
@@ -200,7 +201,7 @@ async def create_local_session(payload: Dict[str, Any], store: SessionStore = De
     session_id = payload.get("sessionId") or payload.get("session_id") or f"session_{uuid.uuid4().hex[:8]}"
     session = store.get_or_create(session_id)
     session["title"] = payload.get("title") or session.get("title") or "Data Extraction Session"
-    session["user_id"] = payload.get("userId") or payload.get("user_id") or "local"
+    session["user_id"] = principal_id.get()
     session["agent_type"] = payload.get("agentType") or "data_extraction"
     store.save()
     logger.info("session.created session_id=%s user_id=%s", session_id, session["user_id"])
@@ -291,16 +292,11 @@ async def upload_files(
         "files": uploaded,
         "files_count": len(uploaded),
     })
-    await send_ws(session_id, {
-        "type": "indexing_complete",
-        "message": "Files are ready for extraction.",
-        "files_count": len(uploaded),
-    })
     return {
         "success": True,
         "session_id": session_id,
         "uploaded_files": uploaded,
-        "message": "Files uploaded and indexed locally.",
+        "message": "Files uploaded; parsing occurs during extraction.",
     }
 
 
@@ -310,7 +306,9 @@ async def extract_data(
     settings: Settings = Depends(get_settings),
     store: SessionStore = Depends(get_store),
 ) -> ExtractionResponse:
-    session_id = request.document_ids[0] if request.document_ids else f"session_{uuid.uuid4().hex[:8]}"
+    session_id = request.session_id
+    if not session_id:
+        raise HTTPException(422, "session_id is required; document_ids must identify uploaded documents")
     logger.info(
         "extract.http.start session_id=%s provider=%s model=%s fields=%s",
         session_id,
@@ -340,7 +338,7 @@ async def extract_data(
     return ExtractionResponse(
         extraction_id=str(uuid.uuid4()),
         extracted_fields={"rows": rows},
-        confidence_score=0.8,
+        confidence_score=None,
     )
 
 
@@ -416,7 +414,7 @@ async def run_and_stream_extraction(
         await send_ws(session_id, {
             "type": "error",
             "message": str(exc),
-            "provider": "opencode",
+            "provider": settings.data_extraction_provider,
             "model": settings.effective_model(),
         })
         await send_ws(session_id, {
@@ -439,7 +437,7 @@ async def run_and_stream_extraction(
 
     for row_index, row in enumerate(rows):
         for field in row.keys():
-            if field not in {"Document Name", "file_name"} and field not in created_fields:
+            if field not in {"Document Name", "file_name", "__evidence__"} and field not in created_fields:
                 fields.append(field)
                 created_fields.add(field)
                 await send_ws(session_id, {
@@ -456,7 +454,6 @@ async def run_and_stream_extraction(
     for row_index, row in enumerate(rows):
         file_name = row.get("Document Name", f"Document {row_index + 1}")
         for field in fields:
-            await asyncio.sleep(0.05)
             await send_ws(session_id, {
                 "type": "streamRowData",
                 "data": {
@@ -464,9 +461,9 @@ async def run_and_stream_extraction(
                     "column_name": field,
                     "extracted_value": row.get(field, "Not found"),
                     "file_name": file_name,
-                    "badge": "opencode",
-                    "citations": [store.supporting_citation(session_id, file_name, field, row.get(field, ""))],
-                    "reasoning": f"Extracted by OpenCode using {settings.effective_model()} with the uploaded local file and generated text index.",
+                    "badge": "verified" if field in row.get("__evidence__", {}) else "unsupported",
+                    "citations": [row["__evidence__"][field]] if field in row.get("__evidence__", {}) else [],
+                    "reasoning": "Source quote verified" if field in row.get("__evidence__", {}) else "No source-supported literal value",
                     "is_placeholder": False,
                 },
             })
@@ -477,7 +474,7 @@ async def run_and_stream_extraction(
         "message": response_text,
         "response": response_text,
         "extracted_fields": fields,
-        "provider": "opencode",
+        "provider": settings.data_extraction_provider,
     })
     await send_ws(session_id, {
         "type": "extraction_complete",
@@ -496,7 +493,24 @@ async def websocket_endpoint(
     settings: Settings = Depends(get_settings),
     store: SessionStore = Depends(get_store),
 ) -> None:
+    try:
+        identity = await authenticate(websocket, settings)
+    except HTTPException:
+        await websocket.close(code=4003)
+        return
+    context_token = principal_id.set(identity)
+    try:
+        store.get_or_create(session_id)
+    except (HTTPException, ValueError):
+        principal_id.reset(context_token)
+        await websocket.close(code=4003)
+        return
+    if session_id in connections:
+        principal_id.reset(context_token)
+        await websocket.close(code=4009, reason="Session already connected")
+        return
     await websocket.accept()
+    pending_task = None
     connections[session_id] = websocket
     logger.info("websocket.connected session_id=%s", session_id)
     await websocket.send_json({
@@ -521,7 +535,10 @@ async def websocket_endpoint(
                 if fields:
                     fields = [str(field).strip() for field in fields if str(field).strip()]
                 logger.info("websocket.extraction_fields session_id=%s fields=%s", session_id, fields)
-                asyncio.create_task(run_and_stream_extraction(
+                if pending_task and not pending_task.done():
+                    await websocket.send_json({"type": "error", "message": "An extraction is already running"})
+                    continue
+                pending_task = asyncio.create_task(run_and_stream_extraction(
                     session_id=session_id,
                     fields=fields,
                     query=data.get("query") or data.get("message") or "",
@@ -563,3 +580,10 @@ async def websocket_endpoint(
             await websocket.send_json({"type": "error", "message": str(exc)})
         except Exception:
             pass
+    finally:
+        if pending_task and not pending_task.done():
+            pending_task.cancel()
+            await asyncio.gather(pending_task, return_exceptions=True)
+        if connections.get(session_id) is websocket:
+            connections.pop(session_id, None)
+        principal_id.reset(context_token)

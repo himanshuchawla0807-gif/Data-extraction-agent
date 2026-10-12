@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useState, useRef } from 'react';
-import ContentEditable from 'react-contenteditable';
 import { ActionTypes } from '../utils';
 import CellModal from '../components/CellModal';
 import Badge from '../Badge'; // Assuming Badge component exists
@@ -16,7 +15,7 @@ export default function NumberCell({
     // Handle structured cell objects with { value, citations, ... } format from restore
     if (val && typeof val === 'object' && val.value !== undefined) {
       return {
-        text: String(val.value || ''),  // ✅ FIX: Extract the value property
+        text: String(val.value ?? ''),  // ✅ FIX: Extract the value property
         citations: val.citations || [],
         reasoning: val.reasoning || null,
         badge: val.badge || null
@@ -26,7 +25,7 @@ export default function NumberCell({
     if (val && typeof val === 'object' && val.text !== undefined) {
       return {
         ...val,
-        text: String(val.text || '')  // Ensure text is a string
+        text: String(val.text ?? '')  // Ensure text is a string
       };
     }
     // Handle primitive values (strings, numbers)
@@ -74,11 +73,7 @@ export default function NumberCell({
     setTimeout(() => {
       if (cellRef.current) {
         cellRef.current.focus();
-        const range = document.createRange();
-        range.selectNodeContents(cellRef.current);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
+        cellRef.current.select?.();
       }
     }, 0);
   }
@@ -179,9 +174,9 @@ export default function NumberCell({
         ref={cellRef} // ✅ FIX: Attach ref for modal positioning
       >
         {isEditing ? (
-          <ContentEditable
-            innerRef={cellRef}
-            html={cleanDisplayContent(value.text)} // Plain text when editing
+          <input type="text"
+            ref={cellRef}
+            value={cleanDisplayContent(value.text)} // Plain text when editing
             onChange={onChange}
             onBlur={onBlur}
             style={{ outline: 'none', width: '100%' }}

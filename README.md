@@ -37,8 +37,8 @@ storage/                  Uploaded files, sessions, generated text indexes
 
 Prerequisites:
 
-- Python 3.11+
-- Node.js 18+
+- Python 3.12
+- Node.js 24 (verified with 24.21.0) and npm
 - OpenCode installed and available as `opencode`
 - A provider key for Anthropic, OpenAI, Gemini, OpenRouter, or an already configured custom OpenCode route
 
@@ -48,8 +48,8 @@ Run the local app:
 python -m venv .venv
 .\.venv\Scripts\activate
 python -m pip install --upgrade pip
-pip install -r requirements.txt
-npm --prefix frontend install
+python -m pip install --require-hashes -r requirements.lock
+npm --prefix frontend ci --ignore-scripts
 .\oriplex-data.ps1
 ```
 

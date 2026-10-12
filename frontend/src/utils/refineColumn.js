@@ -1,7 +1,7 @@
 /**
  * Pure function to refine a column in the schema.
  * Produces a new columns array immutably.
- * 
+ *
  * @param {Array} columns - Current array of column definitions
  * @param {String} columnId - ID of the column to refine
  * @param {Object} refineOptions - Options to update { label, dataType, options, etc. }
