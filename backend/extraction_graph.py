@@ -36,17 +36,18 @@ async def run_extraction_workflow(
             seen = set()
             for row in state.get("rows", []):
                 for key in row.keys():
-                    if key not in {"Document Name", "file_name"} and key not in seen:
+                    if key not in {"Document Name", "file_name", "__evidence__"} and key not in seen:
                         output_fields.append(key)
                         seen.add(key)
         normalized_rows = []
         for row in state.get("rows", []):
             next_row = {"Document Name": row.get("Document Name") or row.get("file_name") or "Document"}
+            next_row["__evidence__"] = row.get("__evidence__", {})
             for field in output_fields:
                 value = row.get(field)
                 next_row[field] = value if value not in (None, "") else "Not found"
             normalized_rows.append(next_row)
-        return {**state, "fields": output_fields, "rows": normalized_rows, "verified": True}
+        return {**state, "fields": output_fields, "rows": normalized_rows, "verified": False}
 
     try:
         from langgraph.graph import END, StateGraph

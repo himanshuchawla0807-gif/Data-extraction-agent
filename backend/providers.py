@@ -546,4 +546,9 @@ class OpenCodeProvider(BaseProvider):
 
 
 def get_provider(settings: Settings) -> BaseProvider:
-    return OpenCodeProvider(settings)
+    if settings.data_extraction_provider == "gemini":
+        from .gemini_provider import GeminiProvider
+        return GeminiProvider(settings)
+    if settings.data_extraction_provider == "opencode" and settings.local_development_mode:
+        return OpenCodeProvider(settings)
+    raise ProviderError("Only the native Gemini provider is enabled for hosted execution")

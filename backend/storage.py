@@ -7,7 +7,7 @@ import logging
 import re
 import shutil
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +15,9 @@ from fastapi import UploadFile
 
 from .config import Settings
 from .rag_index import LocalEmbeddingIndex
+from .foundation import SessionRepository, contained_path, validate_identifier
+from .auth import principal_id
+from fastapi import HTTPException
 
 logger = logging.getLogger("data_extraction.storage")
 
@@ -31,7 +34,10 @@ class SessionStore:
         self.upload_root.mkdir(parents=True, exist_ok=True)
         self.index_root.mkdir(parents=True, exist_ok=True)
         self.session_store.parent.mkdir(parents=True, exist_ok=True)
-        self.sessions: Dict[str, Dict[str, Any]] = self._load()
+        self.repository = SessionRepository(self.session_store.with_suffix(".sqlite3"))
+        self.repository.migrate_json(self.session_store)
+        self.sessions, self.revisions = self.repository.load()
+        self._saved = {key: json.dumps(value, sort_keys=True) for key, value in self.sessions.items()}
 
     def _load(self) -> Dict[str, Dict[str, Any]]:
         if not self.session_store.exists():
@@ -42,36 +48,61 @@ class SessionStore:
             return {}
 
     def save(self) -> None:
-        self.session_store.write_text(json.dumps(self.sessions, indent=2), encoding="utf-8")
+        for key, value in self.sessions.items():
+            encoded = json.dumps(value, sort_keys=True)
+            if self._saved.get(key) != encoded:
+                self.revisions[key] = self.repository.write(key, value, self.revisions.get(key, 0))
+                self._saved[key] = encoded
 
     def get_or_create(self, session_id: str) -> Dict[str, Any]:
+        validate_identifier(session_id)
+        owner = principal_id.get()
+        if not owner:
+            raise HTTPException(401, "Authentication required")
         if session_id not in self.sessions:
             self.sessions[session_id] = {
                 "session_id": session_id,
-                "created_at": datetime.utcnow().isoformat(),
+                "user_id": owner,
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "uploaded_files": [],
                 "table_data": {"columns": [], "rows": []},
             }
             self.save()
             logger.info("session_store.created session_id=%s session_store=%s", session_id, self.session_store)
-        return self.sessions[session_id]
+        session = self.sessions[session_id]
+        if session.get("user_id") != owner:
+            raise HTTPException(403, "Session access denied; legacy ownership requires migration")
+        return session
 
     def get(self, session_id: str) -> Optional[Dict[str, Any]]:
         return self.sessions.get(session_id)
 
     async def save_uploads(self, session_id: str, files: List[UploadFile]) -> List[Dict[str, Any]]:
         session = self.get_or_create(session_id)
-        session_dir = self.upload_root / session_id
+        if not files or len(files) > self.settings.max_upload_files:
+            raise HTTPException(413, "Upload file count exceeds limit")
+        session_dir = contained_path(self.upload_root, session_id)
         session_dir.mkdir(parents=True, exist_ok=True)
 
         saved_files: List[Dict[str, Any]] = []
         for upload in files:
             file_id = str(uuid.uuid4())
-            safe_name = Path(upload.filename or f"{file_id}.bin").name
+            safe_name = Path((upload.filename or f"{file_id}.bin").replace("\\", "/")).name
+            if Path(safe_name).suffix.lower() not in {".pdf", ".txt", ".csv", ".tsv", ".json", ".docx", ".xlsx"}:
+                raise HTTPException(415, "Unsupported document format")
             stored_name = f"{file_id}_{safe_name}"
             path = session_dir / stored_name
-            with path.open("wb") as out_file:
-                shutil.copyfileobj(upload.file, out_file)
+            size = 0
+            try:
+                with path.open("xb") as out_file:
+                    while chunk := await upload.read(1024 * 1024):
+                        size += len(chunk)
+                        if size > self.settings.max_upload_mb * 1024 * 1024:
+                            raise HTTPException(413, "Upload exceeds byte limit")
+                        out_file.write(chunk)
+            except Exception:
+                path.unlink(missing_ok=True)
+                raise
 
             info = {
                 "file_id": file_id,
@@ -79,8 +110,8 @@ class SessionStore:
                 "display_name": safe_name,
                 "path": str(path),
                 "size": path.stat().st_size,
-                "upload_time": datetime.utcnow().isoformat(),
-                "status": "indexed",
+                "upload_time": datetime.now(timezone.utc).isoformat(),
+                "status": "uploaded",
             }
             session["uploaded_files"].append(info)
             saved_files.append(info)
@@ -107,15 +138,17 @@ class SessionStore:
                 self.upload_root / session_id / filename,
             ]
             for candidate in candidates:
-                if candidate.exists() and (candidate.name == filename or candidate.name.endswith(filename)):
+                if candidate.resolve().is_relative_to(self.upload_root.resolve()) and candidate.is_file() and (candidate.name == filename or candidate.name.endswith(filename)):
                     return candidate
         return None
 
     def find_file_by_name(self, filename: str) -> Optional[Path]:
         for session in self.sessions.values():
+            if session.get("user_id") != principal_id.get():
+                continue
             for file_info in session.get("uploaded_files", []):
                 path = Path(file_info.get("path", ""))
-                if path.exists() and (path.name == filename or path.name.endswith(filename)):
+                if path.resolve().is_relative_to(self.upload_root.resolve()) and path.is_file() and (path.name == filename or path.name.endswith(filename)):
                     return path
         return None
 
@@ -128,7 +161,7 @@ class SessionStore:
         columns = [{"id": "Document Name", "label": "Document Name", "dataType": "file"}]
         for row in rows:
             for key in row.keys():
-                if key != "Document Name" and not any(col["label"] == key for col in columns):
+                if key not in {"Document Name", "__evidence__"} and not any(col["label"] == key for col in columns):
                     columns.append({"id": key, "label": key, "dataType": "text"})
         session["table_data"] = {"columns": columns, "rows": rows}
         self.save()
@@ -145,10 +178,31 @@ class SessionStore:
         for file_info in self.get_files(session_id):
             path = Path(file_info.get("path", ""))
             text = ""
+            pages = []
             if path.suffix.lower() == ".pdf":
-                text = self._read_pdf(path)
+                from pypdf import PdfReader
+                reader = PdfReader(str(path))
+                if len(reader.pages) > self.settings.max_document_pages:
+                    raise HTTPException(413, "Document page count exceeds limit")
+                pages = [{"page_number": index, "text": page.extract_text() or ""} for index, page in enumerate(reader.pages, 1)]
+                text = "\n".join(page["text"] for page in pages)
+            elif path.suffix.lower() == ".docx":
+                from docx import Document
+                document = Document(str(path))
+                text = "\n".join([paragraph.text for paragraph in document.paragraphs] + ["\t".join(cell.text for cell in row.cells) for table in document.tables for row in table.rows])
+            elif path.suffix.lower() == ".xlsx":
+                from openpyxl import load_workbook
+                workbook = load_workbook(path, read_only=True, data_only=True)
+                try:
+                    text = "\n".join(f"Sheet: {sheet.title}\n" + "\n".join("\t".join(str(value) if value is not None else "" for value in row) for row in sheet.iter_rows(values_only=True)) for sheet in workbook)
+                finally:
+                    workbook.close()
             else:
                 text = self._read_text(path)
+            if not text.strip():
+                raise HTTPException(422, "No readable text; scanned PDFs require OCR before extraction")
+            if len(text) > self.settings.max_document_chars:
+                raise HTTPException(413, "Document exceeds extraction context budget; split the document")
             text_index_path = self._write_text_index(session_id, file_info["file_id"], file_info["display_name"], text)
             embedding_path = self.embedding_index.ensure_index(
                 session_id,
@@ -176,6 +230,7 @@ class SessionStore:
                 "embedding_index_path": str(embedding_path),
                 "retrieval_context_path": str(retrieval_context_path),
                 "text": selected_text,
+                "pages": pages,
             })
             logger.info(
                 "file.text_extracted session_id=%s file_name=%s chars=%d provided_chars=%d text_index=%s embedding_index=%s retrieved_chunks=%d",

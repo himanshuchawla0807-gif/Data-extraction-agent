@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, ZoomIn, ZoomOut, PanelLeftClose, PanelLeft, ChevronUp, ChevronDown } from 'lucide-react';
 import { VariableSizeList } from 'react-window';
 import * as pdfjsLib from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { API_ROOT } from '../config';  // ✅ Import backend URL for PDF serving
 import './PDFViewer.css';
 
 // Configure worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 // Helper: Levenshtein distance for fuzzy matching
 const levenshteinDistance = (a, b) => {

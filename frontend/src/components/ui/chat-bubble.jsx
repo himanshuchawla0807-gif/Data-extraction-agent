@@ -33,8 +33,8 @@ export function ChatBubbleMessage({
     <div
       className={cn(
         "rounded-lg p-3 max-w-[85%]",
-        variant === "sent" 
-          ? "bg-black text-white" 
+        variant === "sent"
+          ? "bg-black text-white"
           : "bg-gray-100 text-black border border-gray-200",
         className
       )}
@@ -90,4 +90,3 @@ export function ChatBubbleActionWrapper({
     </div>
   )
 }
-

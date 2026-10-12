@@ -109,5 +109,3 @@ export const AILoader = ({ size = 180, text = "Generating" }) => {
     </div>
   );
 };
-
-

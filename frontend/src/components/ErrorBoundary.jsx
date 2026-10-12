@@ -42,16 +42,16 @@ class ErrorBoundary extends React.Component {
           <div style={{ marginBottom: '16px' }}>
             <AlertCircle size={64} color="#dc2626" strokeWidth={1.5} />
           </div>
-          <h2 style={{ 
-            fontSize: '24px', 
-            fontWeight: '600', 
+          <h2 style={{
+            fontSize: '24px',
+            fontWeight: '600',
             color: '#991b1b',
             marginBottom: '8px'
           }}>
             Something went wrong
           </h2>
-          <p style={{ 
-            fontSize: '14px', 
+          <p style={{
+            fontSize: '14px',
             color: '#7f1d1d',
             textAlign: 'center',
             marginBottom: '16px'
@@ -59,8 +59,8 @@ class ErrorBoundary extends React.Component {
             The component encountered an error. Please try refreshing the page.
           </p>
           {this.state.error && (
-            <details style={{ 
-              padding: '12px', 
+            <details style={{
+              padding: '12px',
               backgroundColor: '#fff',
               borderRadius: '8px',
               maxWidth: '600px',
@@ -70,7 +70,7 @@ class ErrorBoundary extends React.Component {
               <summary style={{ cursor: 'pointer', fontWeight: '600' }}>
                 Error Details
               </summary>
-              <pre style={{ 
+              <pre style={{
                 marginTop: '8px',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word'
@@ -105,4 +105,3 @@ class ErrorBoundary extends React.Component {
 }
 
 export default ErrorBoundary;
-

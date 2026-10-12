@@ -49,11 +49,11 @@ const FileUpload = ({ onFilesUploaded, sessionId, isProcessing }) => {
   // Handle files
   const handleFiles = (files) => {
     // Validate file types
-    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
+    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'];
-    
+
     const invalidFiles = files.filter(file => !allowedTypes.includes(file.type) && !file.name.match(/\.(pdf|docx|xlsx|csv)$/i));
-    
+
     if (invalidFiles.length > 0) {
       setError(`Invalid file type(s): ${invalidFiles.map(f => f.name).join(', ')}. Please upload PDF, DOCX, XLSX, or CSV files.`);
       return;
@@ -74,7 +74,7 @@ const FileUpload = ({ onFilesUploaded, sessionId, isProcessing }) => {
       await onFilesUploaded(selectedFiles, (progress) => {
         setUploadProgress(progress);
       });
-      
+
       // Clear selected files after successful upload
       setSelectedFiles([]);
       setUploadProgress(0);
@@ -108,7 +108,7 @@ const FileUpload = ({ onFilesUploaded, sessionId, isProcessing }) => {
   return (
     <div className="file-upload-container" style={{ padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px', marginBottom: '20px' }}>
       <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '18px', fontWeight: 600 }}>Upload Documents</h3>
-      
+
       {/* Drag & Drop Zone */}
       <div
         className={`drag-drop-zone ${dragActive ? 'drag-active' : ''}`}
@@ -168,9 +168,9 @@ const FileUpload = ({ onFilesUploaded, sessionId, isProcessing }) => {
                   <div style={{ fontSize: '12px', color: '#999' }}>{formatFileSize(file.size)}</div>
                 </div>
                 <div style={{ fontSize: '20px' }}>
-                  {file.type.includes('pdf') ? '📄' : 
-                   file.type.includes('word') ? '📝' : 
-                   file.type.includes('sheet') || file.name.endsWith('.xlsx') ? '📊' : 
+                  {file.type.includes('pdf') ? '📄' :
+                   file.type.includes('word') ? '📝' :
+                   file.type.includes('sheet') || file.name.endsWith('.xlsx') ? '📊' :
                    file.name.endsWith('.csv') ? '📈' : '📄'}
                 </div>
               </div>
@@ -284,5 +284,3 @@ const FileUpload = ({ onFilesUploaded, sessionId, isProcessing }) => {
 };
 
 export default FileUpload;
-
-

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 
-export default function ColumnHeaderMenu({ 
-  column, 
-  position, 
-  onClose, 
+export default function ColumnHeaderMenu({
+  column,
+  position,
+  onClose,
   onSortAscending,
   onSortDescending,
   onPin,
@@ -52,7 +52,7 @@ export default function ColumnHeaderMenu({
           <div className="column-menu-title">{column.label}</div>
           <div className="column-menu-type">Type</div>
         </div>
-        
+
         {menuItems.map((item, index) =>
           item.type === 'divider' ? (
             <div key={index} className="column-menu-divider" />
@@ -75,4 +75,3 @@ export default function ColumnHeaderMenu({
     </>
   );
 }
-

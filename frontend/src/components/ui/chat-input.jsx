@@ -15,4 +15,3 @@ export const ChatInput = React.forwardRef(({ className, ...props }, ref) => (
   />
 ));
 ChatInput.displayName = "ChatInput";
-

@@ -44,4 +44,3 @@ export const ChatMessageList = React.forwardRef(({ className, children, smooth =
 });
 
 ChatMessageList.displayName = "ChatMessageList";
-

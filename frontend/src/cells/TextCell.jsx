@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useState, useRef } from 'react';
-import ContentEditable from 'react-contenteditable';
 import { ActionTypes } from '../utils';
 import CellModal from '../components/CellModal';
 import Badge from '../Badge';
@@ -23,7 +22,7 @@ export default function TextCell({
     // Handle structured cell objects { value, citations, reasoning, badge }
     if (val && typeof val === 'object' && val.value !== undefined && val.text === undefined) {
       return {
-        text: String(val.value || ''), // ✅ CRITICAL: Coerce to string
+        text: String(val.value ?? ''), // ✅ CRITICAL: Coerce to string
         citations: val.citations || [],
         badge: val.badge || null,
         reasoning: val.reasoning || null,
@@ -34,7 +33,7 @@ export default function TextCell({
     if (val && typeof val === 'object' && val.text !== undefined) {
       return {
         ...val,
-        text: String(val.text || ''), // ✅ CRITICAL: Coerce to string
+        text: String(val.text ?? ''), // ✅ CRITICAL: Coerce to string
         citations: val.citations || [],
         reasoning: val.reasoning || null
       };
@@ -52,8 +51,8 @@ export default function TextCell({
       // ✅ FIX: Check if val is an object and extract useful content
       if (val && typeof val === 'object') {
         // Try to extract value, text, or content from object
-        const textValue = val.value || val.text || val.content || val.extracted_value || '';
-        if (textValue) {
+        const textValue = val.value ?? val.text ?? val.content ?? val.extracted_value ?? '';
+        if (textValue !== null && textValue !== undefined) {
           parsed.text = String(textValue);
           parsed.citations = val.citations || [];
           parsed.reasoning = val.reasoning || null;
@@ -64,7 +63,7 @@ export default function TextCell({
         }
       } else {
         // Handles primitives, null, undefined
-        parsed.text = String(val || '');
+        parsed.text = String(val ?? '');
       }
     } catch (e) {
       console.warn('[TextCell] String coercion failed:', e);
@@ -82,10 +81,6 @@ export default function TextCell({
 
   // Sync with initialValue prop changes
   useEffect(() => {
-    // [DEBUG] Log value updates
-    if (initialValue && typeof initialValue === 'string' && !initialValue.includes('Extracting')) {
-      console.log(`[TextCell] Received Update [Row ${rowIndex}, Col ${columnId}]:`, initialValue);
-    }
     setValue({ ...parseValue(initialValue), update: false });
   }, [initialValue, rowIndex, columnId]);
 
@@ -255,11 +250,7 @@ export default function TextCell({
     setTimeout(() => {
       if (cellRef.current) {
         cellRef.current.focus();
-        const range = document.createRange();
-        range.selectNodeContents(cellRef.current);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
+        cellRef.current.select?.();
       }
     }, 0);
   }
@@ -290,9 +281,9 @@ export default function TextCell({
         }}
       >
         {isEditing ? (
-          <ContentEditable
-            innerRef={cellRef}
-            html={displayValue || ''} // ✅ FIX: Use clean displayValue, not raw value.text with citations
+          <input type="text"
+            ref={cellRef}
+            value={displayValue ?? ''} // ✅ FIX: Use clean displayValue, not raw value.text with citations
             disabled={false}
             onChange={onChange}
             onBlur={onBlur}

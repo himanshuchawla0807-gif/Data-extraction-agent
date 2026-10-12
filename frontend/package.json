@@ -1,70 +1,64 @@
 {
   "name": "data-extraction-agent-open-frontend",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "private": true,
-  "type": "module",
   "dependencies": {
-    "@popperjs/core": "^2.0.0",
-    "@radix-ui/react-avatar": "^1.1.10",
-    "@radix-ui/react-slot": "^1.2.3",
+    "@popperjs/core": "2.11.8",
+    "@radix-ui/react-avatar": "1.2.7",
+    "@radix-ui/react-slot": "1.4.0",
     "@tanstack/react-table": "8.21.3",
-    "axios": "^1.6.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "1.1.1",
-    "data-extraction-agent-open": "file:..",
-    "exceljs": "^4.4.0",
-    "faker": "^5.5.3",
-    "file-saver": "^2.0.5",
-    "firebase": "^12.7.0",
-    "framer-motion": "^7.10.3",
-    "immutability-helper": "^3.1.1",
-    "jspdf": "^2.5.1",
-    "jspdf-autotable": "^3.8.2",
-    "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
-    "pdfjs-dist": "^3.11.174",
-    "react": "^18.3.1",
-    "react-contenteditable": "^3.3.5",
-    "react-dom": "^18.3.1",
-    "react-markdown": "^10.1.0",
-    "react-popper": "^2.2.5",
-    "react-table": "7.7.0",
-    "react-window": "^1.8.6",
-    "remark-gfm": "^4.0.1",
-    "streamdown": "^1.6.10"
+    "axios": "1.20.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "firebase": "13.0.0",
+    "framer-motion": "14.1.0",
+    "immutability-helper": "3.1.1",
+    "jspdf": "4.2.1",
+    "jspdf-autotable": "5.0.8",
+    "lucide-react": "0.577.0",
+    "pdfjs-dist": "6.4.299",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-markdown": "10.1.0",
+    "react-popper": "2.3.0",
+    "react-window": "1.8.11",
+    "remark-gfm": "4.0.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "overrides": {
-    "react-table": {
-      "react": "$react"
-    },
     "react-popper": {
       "react": "$react"
     },
     "react-window": {
       "react": "$react",
       "react-dom": "$react-dom"
-    }
+    },
+    "@grpc/grpc-js": "1.14.6"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
-    "lint": "prettier --check . && eslint src/**/*.jsx",
-    "format": "prettier --write ."
+    "lint": "eslint src",
+    "format": "prettier --write .",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.16",
-    "@vitejs/plugin-react": "^3.0.0",
-    "autoprefixer": "^10.4.21",
-    "eslint": "^8.30.0",
-    "eslint-config-react-app": "^7.0.1",
-    "jsdom": "^27.3.0",
-    "postcss": "^8.5.6",
-    "prettier": "^2.3.1",
-    "tailwindcss": "^4.1.16",
-    "vite": "4.x",
-    "vite-plugin-eslint": "^1.8.1",
-    "vitest": "^4.0.15"
+    "@eslint/js": "10.0.1",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.7",
+    "globals": "16.5.0",
+    "jsdom": "27.4.0",
+    "postcss": "8.5.29",
+    "prettier": "3.9.10",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.4",
+    "vitest": "4.1.11"
   },
   "browserslist": {
     "production": [
@@ -78,10 +72,9 @@
       "last 1 safari version"
     ]
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  }
+  "type": "module",
+  "engines": {
+    "node": ">=24.12.0 <25"
+  },
+  "packageManager": "npm@11.19.0"
 }

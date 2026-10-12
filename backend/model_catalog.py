@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 
-PROVIDER_ORDER = ["anthropic", "gemini", "openai", "openrouter", "custom"]
+PROVIDER_ORDER = ["gemini", "anthropic", "openai", "openrouter", "custom"]
 
 MODEL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "openai": [
@@ -35,16 +35,7 @@ MODEL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
         },
     ],
     "gemini": [
-        {"label": "Gemini 3 Pro Preview", "model": "google-vertex/gemini-3-pro-preview"},
-        {"label": "Gemini 3 Flash Preview", "model": "google-vertex/gemini-3-flash-preview"},
-        {"label": "Gemini 2.5 Pro", "model": "google-vertex/gemini-2.5-pro"},
-        {"label": "Gemini 2.5 Flash", "model": "google-vertex/gemini-2.5-flash"},
-        {
-            "label": "Custom Gemini route",
-            "model": "",
-            "custom": True,
-            "placeholder": "google-vertex/<gemini-model-name>",
-        },
+        {"label": "Gemini 3.8 Flash", "model": "google-vertex/gemini-3.8-flash"},
     ],
     "openrouter": [
         {
@@ -69,6 +60,6 @@ def provider_catalog() -> Dict[str, Any]:
     return {
         "engine": "opencode",
         "providers": PROVIDER_ORDER,
-        "default": "anthropic",
+        "default": "gemini",
         "models": MODEL_PRESETS,
     }

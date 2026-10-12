@@ -46,12 +46,13 @@ class WebSocketService {
 
     this.isConnecting = true;
     this.sessionId = sessionId;
+    this.token = token || this.token || localStorage.getItem('auth_token');
     this.userId = userId;  // ✅ Store for reconnection
     // ✅ NEW: Include user ID and Token in WebSocket URL for message persistence & security
     let wsUrl = `${url}/${sessionId}`;
     const params = new URLSearchParams();
-    if (userId) params.append('user', userId);
-    if (token) params.append('token', token);
+
+    if (this.token) params.append('token', this.token);
 
     const queryString = params.toString();
     if (queryString) {
@@ -60,7 +61,7 @@ class WebSocketService {
 
     return new Promise((resolve, reject) => {
       try {
-        console.log(`Connecting to WebSocket: ${wsUrl}`);
+        console.log('Connecting to authenticated extraction WebSocket');
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
@@ -135,7 +136,7 @@ class WebSocketService {
       if (this.sessionId) {
         // Note: Reconnection might fail if token is expired/missing in stored state
         // Ideal fix: Store token in class instance, but for now we rely on the caller to handle fresh tokens
-        this.connect(this.sessionId, getWsUrl(), this.userId).catch(console.error);
+        this.connect(this.sessionId, getWsUrl(), this.userId, this.token).catch(console.error);
       }
     }, delay);
   }
@@ -516,7 +517,7 @@ class WebSocketService {
         // Store the sessionId in case it wasn't stored before
         this.sessionId = sid;
         if (uid) this.userId = uid;  // ✅ Store userId if provided
-        await this.connect(sid, getWsUrl(), uid);
+        await this.connect(sid, getWsUrl(), uid, this.token);
         console.log('[WS_SERVICE] ensureConnected: Reconnected successfully!');
         return true;
       } catch (error) {

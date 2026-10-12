@@ -320,7 +320,7 @@ export const useExtractionWebSocket = ({
                 // ✅ FIX: Force column type to TEXT always (User Requirement)
                 // Ignore backend suggestions like 'number' or 'currency' to prevent data loss/issues
                 // User can manually change type later if needed.
-                /* 
+                /*
                 if (data.column_type) {
                     const frontendType = mapBackendTypeToFrontend(data.column_type);
                     dispatch({
@@ -366,7 +366,7 @@ export const useExtractionWebSocket = ({
                 if (data.column_type) {
                     const frontendType = mapBackendTypeToFrontend(data.column_type);
                     // We can bundle this? No, separate action for safety.
-                    // Or pass type to ADD_COLUMN_TO_RIGHT? 
+                    // Or pass type to ADD_COLUMN_TO_RIGHT?
                     // Simplest: Dispatch update type immediately after.
                     dispatch({
                         type: ActionTypes.UPDATE_COLUMN_TYPE,
@@ -385,7 +385,7 @@ export const useExtractionWebSocket = ({
             if (pending && pending.rowIndices && pending.rowIndices.length > 0) {
                 const shouldAnimate =
                     pending.allColumns || // __ALL__ marker
-                    pending.newColumns || // __NEW__ marker  
+                    pending.newColumns || // __NEW__ marker
                     pending.columnNames.includes(colName); // Specific column name match
 
                 if (shouldAnimate) {
@@ -420,7 +420,7 @@ export const useExtractionWebSocket = ({
                 return;
             }
 
-            // Get current state via reducer's state  
+            // Get current state via reducer's state
             const currentColumns = stateRef.current.columns;
             console.log('[RENAME_COLUMN] Current columns:', currentColumns.map(c => c.label));
 

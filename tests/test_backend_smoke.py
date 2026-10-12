@@ -11,8 +11,8 @@ def test_health_reports_configured_provider():
     assert response.status_code == 200
     payload = response.json()
     assert payload["service"] == "data-extraction-agent-open"
-    assert payload["engine"] == "opencode"
-    assert payload["provider"] == "opencode"
+    assert payload["engine"] == "native-gemini"
+    assert payload["provider"] == "gemini"
     assert isinstance(payload["provider_key_available"], bool)
 
 
@@ -20,7 +20,7 @@ def test_provider_catalog_exposes_only_real_providers():
     catalog = provider_catalog()
     blocked_provider = "mo" + "ck"
     assert catalog["engine"] == "opencode"
-    assert catalog["default"] == "anthropic"
+    assert catalog["default"] == "gemini"
     assert "opencode" not in catalog["providers"]
     assert blocked_provider not in catalog["providers"]
     assert blocked_provider not in catalog["models"]
@@ -34,7 +34,7 @@ def test_provider_catalog_uses_current_model_presets():
     assert models["anthropic"][1]["model"] == "anthropic/claude-sonnet-4-6"
     assert models["openai"][0]["model"] == "openai/gpt-5.5"
     assert any(preset["model"] == "openai/gpt-5.4-mini" for preset in models["openai"])
-    assert models["gemini"][0]["model"] == "google-vertex/gemini-3-pro-preview"
+    assert models["gemini"][0]["model"] == "google-vertex/gemini-3.8-flash"
     assert models["openrouter"][0]["custom"] is True
 
 
@@ -60,18 +60,20 @@ def test_workflow_preserves_provider_schema_for_latest_query(monkeypatch):
     ))
 
     assert rows == [{
+        "__evidence__": {},
         "Document Name": "Amazon-10k-2024.pdf",
         "Risk Score": "8/10",
         "Risk Rationale": "Customer concentration and margin pressure.",
     }]
 
 
-def test_runtime_provider_is_always_opencode():
+def test_runtime_provider_is_native_gemini():
     from backend.providers import OpenCodeProvider, get_provider
+    from backend.gemini_provider import GeminiProvider
 
     settings = Settings(data_extraction_provider="gemini", opencode_model="google-vertex/gemini-2.5-pro")
-    assert isinstance(get_provider(settings), OpenCodeProvider)
-    assert settings.effective_model() == "google-vertex/gemini-2.5-pro"
+    assert isinstance(get_provider(settings), GeminiProvider)
+    assert settings.effective_model() == "gemini-3.8-flash"
 
 
 def test_opencode_prompt_is_not_passed_as_file():
@@ -300,6 +302,8 @@ def test_supporting_citation_uses_filename_and_source_chunk():
     )
     try:
         store = SessionStore(settings)
+        from backend.auth import principal_id
+        identity = principal_id.set("test-owner")
         session = store.get_or_create("session_test")
         file_id = "file123"
         display_name = "Amazon-10k-2024.pdf"

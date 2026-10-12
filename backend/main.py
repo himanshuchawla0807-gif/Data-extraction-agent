@@ -9,6 +9,9 @@ from starlette.requests import Request
 
 from .api import router
 from .config import get_settings
+from .auth import authenticate, principal_id
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 
 settings = get_settings()
 
@@ -46,7 +49,16 @@ async def log_requests(request: Request, call_next):
         local_mode,
         local_user,
     )
-    response = await call_next(request)
+    context_token = None
+    try:
+        if request.method != "OPTIONS" and request.url.path not in {"/", "/api/health", "/api/data-extraction/health"}:
+            context_token = principal_id.set(await authenticate(request, settings))
+        response = await call_next(request)
+    except HTTPException as error:
+        response = JSONResponse({"detail": error.detail}, status_code=error.status_code)
+    finally:
+        if context_token is not None:
+            principal_id.reset(context_token)
     elapsed_ms = (time.perf_counter() - started) * 1000
     logger.info(
         "request.end method=%s path=%s status=%s elapsed_ms=%.1f",

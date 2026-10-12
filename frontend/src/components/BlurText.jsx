@@ -100,4 +100,3 @@ const BlurText = ({
 };
 
 export default BlurText;
-
