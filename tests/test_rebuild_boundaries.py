@@ -117,3 +117,24 @@ def test_extract_only_selected_documents_and_reject_unknown_ids(tmp_path):
         assert len(store.extract_texts("case")) == 2
     finally:
         principal_id.reset(token)
+
+
+def test_rejected_extraction_upload_batch_leaves_no_files_or_metadata(tmp_path):
+    settings = Settings(
+        local_storage_dir=tmp_path / "storage",
+        session_store=tmp_path / "sessions.json",
+        local_embedding_dir=tmp_path / "embeddings",
+    )
+    token = principal_id.set("alice")
+    try:
+        store = SessionStore(settings)
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(store.save_uploads("case", [
+                UploadFile(filename="valid.txt", file=io.BytesIO(b"valid")),
+                UploadFile(filename="empty.txt", file=io.BytesIO()),
+            ]))
+        assert error.value.status_code == 422
+        assert store.get_files("case") == SessionStore(settings).get_files("case") == []
+        assert not list((settings.local_storage_dir / "uploads" / "case").iterdir())
+    finally:
+        principal_id.reset(token)
