@@ -78,79 +78,87 @@ class SessionStore:
         return self.sessions.get(session_id)
 
     async def save_uploads(self, session_id: str, files: List[UploadFile]) -> List[Dict[str, Any]]:
-        session = self.get_or_create(session_id)
+        self.get_or_create(session_id)
         if not files or len(files) > self.settings.max_upload_files:
             raise HTTPException(413, "Upload file count exceeds limit")
         session_dir = contained_path(self.upload_root, session_id)
         session_dir.mkdir(parents=True, exist_ok=True)
 
         saved_files: List[Dict[str, Any]] = []
-        for upload in files:
-            file_id = str(uuid.uuid4())
-            safe_name = Path((upload.filename or f"{file_id}.bin").replace("\\", "/")).name
-            if Path(safe_name).suffix.lower() not in {".pdf", ".txt", ".csv", ".tsv", ".json", ".docx", ".xlsx"}:
-                raise HTTPException(415, "Unsupported document format")
-            stored_name = f"{file_id}_{safe_name}"
-            path = session_dir / stored_name
-            size = 0
-            try:
+        created: list[Path] = []
+        try:
+            for upload in files:
+                file_id = str(uuid.uuid4())
+                safe_name = Path((upload.filename or f"{file_id}.bin").replace("\\", "/")).name
+                if Path(safe_name).suffix.lower() not in {".pdf", ".txt", ".csv", ".tsv", ".json", ".docx", ".xlsx"}:
+                    raise HTTPException(415, "Unsupported document format")
+                stored_name = f"{file_id}_{safe_name}"
+                path = session_dir / stored_name
+                size = 0
                 with path.open("xb") as out_file:
+                    created.append(path)
                     while chunk := await upload.read(1024 * 1024):
                         size += len(chunk)
                         if size > self.settings.max_upload_mb * 1024 * 1024:
                             raise HTTPException(413, "Upload exceeds byte limit")
                         out_file.write(chunk)
-            except Exception:
+                if not size:
+                    raise HTTPException(422, "Empty upload")
+
+                info = {
+                    "file_id": file_id,
+                    "filename": stored_name,
+                    "display_name": safe_name,
+                    "path": str(path),
+                    "size": path.stat().st_size,
+                    "upload_time": datetime.now(timezone.utc).isoformat(),
+                    "status": "uploaded",
+                }
+                saved_files.append(info)
+                logger.info(
+                    "file.saved session_id=%s display_name=%s size=%d path=%s",
+                    session_id,
+                    safe_name,
+                    info["size"],
+                    path,
+                )
+
+            session = self.get_or_create(session_id)
+            updated = {**session, "uploaded_files": [*session["uploaded_files"], *saved_files]}
+            encoded = json.dumps(updated, sort_keys=True)
+            revision = self.repository.write(session_id, updated, self.revisions[session_id])
+            self.sessions[session_id] = updated
+            self.revisions[session_id] = revision
+            self._saved[session_id] = encoded
+        except BaseException:
+            for path in created:
                 path.unlink(missing_ok=True)
-                raise
-
-            info = {
-                "file_id": file_id,
-                "filename": stored_name,
-                "display_name": safe_name,
-                "path": str(path),
-                "size": path.stat().st_size,
-                "upload_time": datetime.now(timezone.utc).isoformat(),
-                "status": "uploaded",
-            }
-            session["uploaded_files"].append(info)
-            saved_files.append(info)
-            logger.info(
-                "file.saved session_id=%s display_name=%s size=%d path=%s",
-                session_id,
-                safe_name,
-                info["size"],
-                path,
-            )
-
-        self.save()
+            raise
         return saved_files
 
     def get_files(self, session_id: str) -> List[Dict[str, Any]]:
         session = self.get_or_create(session_id)
         return session.get("uploaded_files", [])
 
+    def _matching_files(self, session_id: str, files: List[Dict[str, Any]], filename: str):
+        root = contained_path(self.upload_root, session_id)
+        for info in files:
+            path = Path(info.get("path", "")).resolve()
+            if filename in {info.get("filename"), info.get("display_name"), path.name} and path.is_relative_to(root) and path.is_file():
+                yield path
+
     def find_file(self, session_id: str, filename: str) -> Optional[Path]:
-        for file_info in self.get_files(session_id):
-            candidates = [
-                Path(file_info.get("path", "")),
-                self.upload_root / session_id / file_info.get("filename", ""),
-                self.upload_root / session_id / filename,
-            ]
-            for candidate in candidates:
-                if candidate.resolve().is_relative_to(self.upload_root.resolve()) and candidate.is_file() and (candidate.name == filename or candidate.name.endswith(filename)):
-                    return candidate
-        return None
+        matches = list(self._matching_files(session_id, self.get_files(session_id), filename))
+        return matches[0] if len(matches) == 1 else None
 
     def find_file_by_name(self, filename: str) -> Optional[Path]:
-        for session in self.sessions.values():
-            if session.get("user_id") != principal_id.get():
-                continue
-            for file_info in session.get("uploaded_files", []):
-                path = Path(file_info.get("path", ""))
-                if path.resolve().is_relative_to(self.upload_root.resolve()) and path.is_file() and (path.name == filename or path.name.endswith(filename)):
-                    return path
-        return None
+        matches = [
+            path
+            for session_id, session in self.sessions.items()
+            if session.get("user_id") == principal_id.get()
+            for path in self._matching_files(session_id, session.get("uploaded_files", []), filename)
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def table_state(self, session_id: str) -> Dict[str, Any]:
         session = self.get_or_create(session_id)
@@ -172,11 +180,21 @@ class SessionStore:
         query: str = "",
         fields: Optional[List[str]] = None,
         table_context: Optional[Dict[str, Any]] = None,
+        document_ids: Optional[List[str]] = None,
     ) -> List[Dict[str, str]]:
         documents: List[Dict[str, str]] = []
         retrieval_query = self._retrieval_query(query, fields or [], table_context or self.table_state(session_id))
-        for file_info in self.get_files(session_id):
-            path = Path(file_info.get("path", ""))
+        files = self.get_files(session_id)
+        if document_ids:
+            selected = set(document_ids)
+            if not selected.issubset(file_info["file_id"] for file_info in files):
+                raise HTTPException(404, "One or more documents were not found in this session")
+            files = [file_info for file_info in files if file_info["file_id"] in selected]
+        for file_info in files:
+            path = Path(file_info.get("path", "")).resolve()
+            session_root = contained_path(self.upload_root, session_id)
+            if not path.is_relative_to(session_root) or not path.is_file():
+                raise HTTPException(404, "Stored document was not found in this session")
             text = ""
             pages = []
             if path.suffix.lower() == ".pdf":

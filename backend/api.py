@@ -317,13 +317,17 @@ async def extract_data(
         request.fields,
     )
     table_context = store.table_state(session_id)
+    if request.document_ids:
+        # Previous rows and messages can contain facts from unselected files.
+        table_context = {"columns": table_context.get("columns", []), "rows": []}
     documents = store.extract_texts(
         session_id,
         query=request.query or request.context or "",
         fields=request.fields,
         table_context=table_context,
+        document_ids=request.document_ids,
     )
-    memory = session_memory(store, session_id)
+    memory = "" if request.document_ids else session_memory(store, session_id)
     for document in documents:
         document["memory"] = memory
         document["table_context"] = table_context

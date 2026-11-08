@@ -94,3 +94,113 @@ def test_upload_stream_limits_ownership_and_duplicate_names(tmp_path):
         assert store.find_file_by_name("same.txt") is None
     finally:
         principal_id.reset(token)
+
+
+def test_extract_only_selected_documents_and_reject_unknown_ids(tmp_path):
+    settings = Settings(
+        local_storage_dir=tmp_path / "storage",
+        session_store=tmp_path / "sessions.json",
+        local_embedding_dir=tmp_path / "embeddings",
+    )
+    store = SessionStore(settings)
+    token = principal_id.set("alice")
+    try:
+        first, second = asyncio.run(store.save_uploads("case", [
+            UploadFile(filename="a.txt", file=io.BytesIO(b"first source")),
+            UploadFile(filename="b.txt", file=io.BytesIO(b"second source")),
+        ]))
+        documents = store.extract_texts("case", document_ids=[second["file_id"], second["file_id"]])
+        assert [document["text"] for document in documents] == ["second source"]
+        with pytest.raises(HTTPException) as error:
+            store.extract_texts("case", document_ids=[first["file_id"], "foreign-id"])
+        assert error.value.status_code == 404
+        assert len(store.extract_texts("case")) == 2
+    finally:
+        principal_id.reset(token)
+
+
+def test_rejected_extraction_upload_batch_leaves_no_files_or_metadata(tmp_path):
+    settings = Settings(
+        local_storage_dir=tmp_path / "storage",
+        session_store=tmp_path / "sessions.json",
+        local_embedding_dir=tmp_path / "embeddings",
+    )
+    token = principal_id.set("alice")
+    try:
+        store = SessionStore(settings)
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(store.save_uploads("case", [
+                UploadFile(filename="valid.txt", file=io.BytesIO(b"valid")),
+                UploadFile(filename="empty.txt", file=io.BytesIO()),
+            ]))
+        assert error.value.status_code == 422
+        assert store.get_files("case") == SessionStore(settings).get_files("case") == []
+        assert not list((settings.local_storage_dir / "uploads" / "case").iterdir())
+    finally:
+        principal_id.reset(token)
+
+
+def test_http_extraction_does_not_pass_unselected_session_evidence(tmp_path, monkeypatch):
+    from backend import api
+    from backend.models import ExtractionRequest
+
+    settings = Settings(
+        local_storage_dir=tmp_path / "storage",
+        session_store=tmp_path / "sessions.json",
+        local_embedding_dir=tmp_path / "embeddings",
+    )
+    store = SessionStore(settings)
+    token = principal_id.set("alice")
+
+    async def extract(settings, documents, fields, query):
+        assert [doc["text"] for doc in documents] == ["selected evidence"]
+        assert documents[0]["memory"] == ""
+        assert documents[0]["table_context"]["rows"] == []
+        return []
+
+    monkeypatch.setattr(api, "run_extraction_workflow", extract)
+    try:
+        chosen, _ = asyncio.run(store.save_uploads("case", [
+            UploadFile(filename="chosen.txt", file=io.BytesIO(b"selected evidence")),
+            UploadFile(filename="other.txt", file=io.BytesIO(b"unselected evidence")),
+        ]))
+        session = store.get_or_create("case")
+        session["messages"] = [{"content": "unselected evidence"}]
+        session["table_data"]["rows"] = [{"Document Name": "other.txt", "Revenue": "unselected evidence"}]
+        store.save()
+        asyncio.run(api.extract_data(ExtractionRequest(
+            session_id="case", document_ids=[chosen["file_id"]]
+        ), settings, store))
+    finally:
+        principal_id.reset(token)
+
+
+def test_file_lookup_requires_an_exact_unambiguous_session_file(tmp_path):
+    settings = Settings(
+        local_storage_dir=tmp_path / "storage",
+        session_store=tmp_path / "sessions.json",
+        local_embedding_dir=tmp_path / "embeddings",
+    )
+    store = SessionStore(settings)
+    token = principal_id.set("alice")
+    try:
+        files = asyncio.run(store.save_uploads("case", [
+            UploadFile(filename="new-memo.txt", file=io.BytesIO(b"new")),
+            UploadFile(filename="memo.txt", file=io.BytesIO(b"original")),
+        ]))
+        assert store.find_file("case", "memo.txt").read_bytes() == b"original"
+        assert store.find_file("case", "emo.txt") is None
+        assert store.find_file("case", files[0]["filename"]).read_bytes() == b"new"
+        asyncio.run(store.save_uploads("other", [UploadFile(filename="memo.txt", file=io.BytesIO(b"other"))]))
+        assert store.find_file_by_name("memo.txt") is None
+    finally:
+        principal_id.reset(token)
+
+
+@pytest.mark.parametrize("value,quote,expected", [(0, "Errors: 0", "0"), ("   ", "Errors: 0", "Not found")])
+def test_quote_verification_preserves_zero_but_rejects_blank_values(value, quote, expected):
+    documents = [{"file_id": "report", "file_name": "report.txt", "text": "Errors: 0"}]
+    payload = {"rows": [{"document_id": "report", "cells": [{"field": "Errors", "value": value, "quote": quote}]}]}
+    row = verify_payload(payload, documents, ["Errors"])[0]
+    assert row["Errors"] == expected
+    assert ("Errors" in row["__evidence__"]) is (expected == "0")

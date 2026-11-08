@@ -33,7 +33,11 @@
       "react": "$react",
       "react-dom": "$react-dom"
     },
-    "@grpc/grpc-js": "1.14.6"
+    "@grpc/grpc-js": "1.14.6",
+    "minimatch": "11.0.5",
+    "dompurify": "3.4.17",
+    "follow-redirects": "1.16.2",
+    "re2js": "2.9.1"
   },
   "scripts": {
     "dev": "vite",
@@ -58,7 +62,7 @@
     "prettier": "3.9.10",
     "tailwindcss": "4.3.3",
     "vite": "8.3.4",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "browserslist": {
     "production": [

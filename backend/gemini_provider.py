@@ -37,13 +37,16 @@ def verify_payload(payload: dict, documents: list[dict], fields: list[str]) -> l
                 raise ProviderError("Response contains an unexpected field")
             if field in row:
                 raise ProviderError('Response duplicates a field')
-            value, quote = str(cell.get("value") or ""), str(cell.get("quote") or "")
+            raw_value = cell.get("value")
+            value = "" if raw_value is None else str(raw_value)
+            quote = str(cell.get("quote") or "")
+            normalized_value, normalized_quote = normalize_text(value), normalize_text(quote)
             page = cell.get("page_number")
             pages = document.get("pages") or []
             text = document.get("text") or ""
             if pages:
                 text = next((item["text"] for item in pages if item["page_number"] == page), "")
-            supported = bool(value and quote and normalize_text(quote) in normalize_text(text) and re.search(r"(?<!\w)" + re.escape(normalize_text(value)) + r"(?!\w)", normalize_text(quote)))
+            supported = bool(normalized_value and normalized_quote and normalized_quote in normalize_text(text) and re.search(r"(?<!\w)" + re.escape(normalized_value) + r"(?!\w)", normalized_quote))
             row[field] = value if supported else "Not found"
             if supported:
                 row["__evidence__"][field] = {"source": "document", "filename": document["file_name"], "document_id": document_id, "excerpt": quote, "page_number": page, "verification": "exact_quote"}
