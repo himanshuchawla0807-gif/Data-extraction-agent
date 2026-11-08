@@ -138,3 +138,38 @@ def test_rejected_extraction_upload_batch_leaves_no_files_or_metadata(tmp_path):
         assert not list((settings.local_storage_dir / "uploads" / "case").iterdir())
     finally:
         principal_id.reset(token)
+
+
+def test_http_extraction_does_not_pass_unselected_session_evidence(tmp_path, monkeypatch):
+    from backend import api
+    from backend.models import ExtractionRequest
+
+    settings = Settings(
+        local_storage_dir=tmp_path / "storage",
+        session_store=tmp_path / "sessions.json",
+        local_embedding_dir=tmp_path / "embeddings",
+    )
+    store = SessionStore(settings)
+    token = principal_id.set("alice")
+
+    async def extract(settings, documents, fields, query):
+        assert [doc["text"] for doc in documents] == ["selected evidence"]
+        assert documents[0]["memory"] == ""
+        assert documents[0]["table_context"]["rows"] == []
+        return []
+
+    monkeypatch.setattr(api, "run_extraction_workflow", extract)
+    try:
+        chosen, _ = asyncio.run(store.save_uploads("case", [
+            UploadFile(filename="chosen.txt", file=io.BytesIO(b"selected evidence")),
+            UploadFile(filename="other.txt", file=io.BytesIO(b"unselected evidence")),
+        ]))
+        session = store.get_or_create("case")
+        session["messages"] = [{"content": "unselected evidence"}]
+        session["table_data"]["rows"] = [{"Document Name": "other.txt", "Revenue": "unselected evidence"}]
+        store.save()
+        asyncio.run(api.extract_data(ExtractionRequest(
+            session_id="case", document_ids=[chosen["file_id"]]
+        ), settings, store))
+    finally:
+        principal_id.reset(token)
