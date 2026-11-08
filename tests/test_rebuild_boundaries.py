@@ -195,3 +195,12 @@ def test_file_lookup_requires_an_exact_unambiguous_session_file(tmp_path):
         assert store.find_file_by_name("memo.txt") is None
     finally:
         principal_id.reset(token)
+
+
+@pytest.mark.parametrize("value,quote,expected", [(0, "Errors: 0", "0"), ("   ", "Errors: 0", "Not found")])
+def test_quote_verification_preserves_zero_but_rejects_blank_values(value, quote, expected):
+    documents = [{"file_id": "report", "file_name": "report.txt", "text": "Errors: 0"}]
+    payload = {"rows": [{"document_id": "report", "cells": [{"field": "Errors", "value": value, "quote": quote}]}]}
+    row = verify_payload(payload, documents, ["Errors"])[0]
+    assert row["Errors"] == expected
+    assert ("Errors" in row["__evidence__"]) is (expected == "0")
