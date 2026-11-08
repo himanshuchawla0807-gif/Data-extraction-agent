@@ -94,3 +94,26 @@ def test_upload_stream_limits_ownership_and_duplicate_names(tmp_path):
         assert store.find_file_by_name("same.txt") is None
     finally:
         principal_id.reset(token)
+
+
+def test_extract_only_selected_documents_and_reject_unknown_ids(tmp_path):
+    settings = Settings(
+        local_storage_dir=tmp_path / "storage",
+        session_store=tmp_path / "sessions.json",
+        local_embedding_dir=tmp_path / "embeddings",
+    )
+    store = SessionStore(settings)
+    token = principal_id.set("alice")
+    try:
+        first, second = asyncio.run(store.save_uploads("case", [
+            UploadFile(filename="a.txt", file=io.BytesIO(b"first source")),
+            UploadFile(filename="b.txt", file=io.BytesIO(b"second source")),
+        ]))
+        documents = store.extract_texts("case", document_ids=[second["file_id"], second["file_id"]])
+        assert [document["text"] for document in documents] == ["second source"]
+        with pytest.raises(HTTPException) as error:
+            store.extract_texts("case", document_ids=[first["file_id"], "foreign-id"])
+        assert error.value.status_code == 404
+        assert len(store.extract_texts("case")) == 2
+    finally:
+        principal_id.reset(token)

@@ -172,11 +172,21 @@ class SessionStore:
         query: str = "",
         fields: Optional[List[str]] = None,
         table_context: Optional[Dict[str, Any]] = None,
+        document_ids: Optional[List[str]] = None,
     ) -> List[Dict[str, str]]:
         documents: List[Dict[str, str]] = []
         retrieval_query = self._retrieval_query(query, fields or [], table_context or self.table_state(session_id))
-        for file_info in self.get_files(session_id):
-            path = Path(file_info.get("path", ""))
+        files = self.get_files(session_id)
+        if document_ids:
+            selected = set(document_ids)
+            if not selected.issubset(file_info["file_id"] for file_info in files):
+                raise HTTPException(404, "One or more documents were not found in this session")
+            files = [file_info for file_info in files if file_info["file_id"] in selected]
+        for file_info in files:
+            path = Path(file_info.get("path", "")).resolve()
+            session_root = contained_path(self.upload_root, session_id)
+            if not path.is_relative_to(session_root) or not path.is_file():
+                raise HTTPException(404, "Stored document was not found in this session")
             text = ""
             pages = []
             if path.suffix.lower() == ".pdf":

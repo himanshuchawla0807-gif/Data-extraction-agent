@@ -322,6 +322,7 @@ async def extract_data(
         query=request.query or request.context or "",
         fields=request.fields,
         table_context=table_context,
+        document_ids=request.document_ids,
     )
     memory = session_memory(store, session_id)
     for document in documents:
