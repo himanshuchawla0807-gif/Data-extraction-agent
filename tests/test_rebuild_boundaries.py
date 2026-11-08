@@ -173,3 +173,25 @@ def test_http_extraction_does_not_pass_unselected_session_evidence(tmp_path, mon
         ), settings, store))
     finally:
         principal_id.reset(token)
+
+
+def test_file_lookup_requires_an_exact_unambiguous_session_file(tmp_path):
+    settings = Settings(
+        local_storage_dir=tmp_path / "storage",
+        session_store=tmp_path / "sessions.json",
+        local_embedding_dir=tmp_path / "embeddings",
+    )
+    store = SessionStore(settings)
+    token = principal_id.set("alice")
+    try:
+        files = asyncio.run(store.save_uploads("case", [
+            UploadFile(filename="new-memo.txt", file=io.BytesIO(b"new")),
+            UploadFile(filename="memo.txt", file=io.BytesIO(b"original")),
+        ]))
+        assert store.find_file("case", "memo.txt").read_bytes() == b"original"
+        assert store.find_file("case", "emo.txt") is None
+        assert store.find_file("case", files[0]["filename"]).read_bytes() == b"new"
+        asyncio.run(store.save_uploads("other", [UploadFile(filename="memo.txt", file=io.BytesIO(b"other"))]))
+        assert store.find_file_by_name("memo.txt") is None
+    finally:
+        principal_id.reset(token)

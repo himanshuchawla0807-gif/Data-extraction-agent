@@ -140,27 +140,25 @@ class SessionStore:
         session = self.get_or_create(session_id)
         return session.get("uploaded_files", [])
 
+    def _matching_files(self, session_id: str, files: List[Dict[str, Any]], filename: str):
+        root = contained_path(self.upload_root, session_id)
+        for info in files:
+            path = Path(info.get("path", "")).resolve()
+            if filename in {info.get("filename"), info.get("display_name"), path.name} and path.is_relative_to(root) and path.is_file():
+                yield path
+
     def find_file(self, session_id: str, filename: str) -> Optional[Path]:
-        for file_info in self.get_files(session_id):
-            candidates = [
-                Path(file_info.get("path", "")),
-                self.upload_root / session_id / file_info.get("filename", ""),
-                self.upload_root / session_id / filename,
-            ]
-            for candidate in candidates:
-                if candidate.resolve().is_relative_to(self.upload_root.resolve()) and candidate.is_file() and (candidate.name == filename or candidate.name.endswith(filename)):
-                    return candidate
-        return None
+        matches = list(self._matching_files(session_id, self.get_files(session_id), filename))
+        return matches[0] if len(matches) == 1 else None
 
     def find_file_by_name(self, filename: str) -> Optional[Path]:
-        for session in self.sessions.values():
-            if session.get("user_id") != principal_id.get():
-                continue
-            for file_info in session.get("uploaded_files", []):
-                path = Path(file_info.get("path", ""))
-                if path.resolve().is_relative_to(self.upload_root.resolve()) and path.is_file() and (path.name == filename or path.name.endswith(filename)):
-                    return path
-        return None
+        matches = [
+            path
+            for session_id, session in self.sessions.items()
+            if session.get("user_id") == principal_id.get()
+            for path in self._matching_files(session_id, session.get("uploaded_files", []), filename)
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def table_state(self, session_id: str) -> Dict[str, Any]:
         session = self.get_or_create(session_id)
