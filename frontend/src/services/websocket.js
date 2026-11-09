@@ -145,7 +145,6 @@ class WebSocketService {
    * @param {object} message - Message object to send
    */
   send(message) {
-    console.log('[WS_SERVICE] send() called with:', message.type);
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.error('[WS_SERVICE] WebSocket is not connected! readyState:', this.ws?.readyState);
@@ -161,7 +160,6 @@ class WebSocketService {
         : message;
 
       const jsonMessage = JSON.stringify(messageWithWebSearch);
-      console.log('[WS_SERVICE] 🔍 enable_web_search in this message:', messageWithWebSearch.enable_web_search);
       this.ws.send(jsonMessage);
       console.log('[WS_SERVICE] Message sent successfully!');
       return true;
@@ -336,7 +334,6 @@ class WebSocketService {
 
       // ✅ NEW: Handle extraction_stopped when user clicks stop button
       case 'extraction_stopped':
-        console.log('[EXTRACTION_STOPPED] Received:', message);
         this.emit('extraction_stopped', message);
         break;
 

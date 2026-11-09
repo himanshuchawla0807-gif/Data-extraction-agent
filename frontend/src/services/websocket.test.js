@@ -23,6 +23,8 @@ test('extraction data crosses the socket without being copied to the console', a
   const file = 'private-test-filename';
   const extract = 'private-test-extracted-value';
   const listener = vi.fn();
+  const stopped = vi.fn();
+  service.on('extraction_stopped', stopped);
   service.on('streamRowData', listener);
   expect(service.send({ type: 'extraction_query', query })).toBe(true);
   expect(JSON.parse(service.ws.send.mock.calls[0][0])).toMatchObject({ query });
@@ -30,8 +32,12 @@ test('extraction data crosses the socket without being copied to the console', a
   service.ws.onmessage({ data: JSON.stringify(message) });
   expect(listener).toHaveBeenCalledWith(message);
 
+  const stopMessage = { type: 'extraction_stopped', message: 'private-test-stop-detail' };
+  service.ws.onmessage({ data: JSON.stringify(stopMessage) });
+  expect(stopped).toHaveBeenCalledWith(stopMessage);
+
   const consoleOutput = JSON.stringify(logs.flatMap(log => log.mock.calls));
-  for (const content of [query, file, extract, 'test-token']) {
+  for (const content of [query, file, extract, stopMessage.message, 'test-token']) {
     expect(consoleOutput).not.toContain(content);
   }
 });
