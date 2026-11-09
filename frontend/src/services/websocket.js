@@ -75,22 +75,21 @@ class WebSocketService {
         this.ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
-            console.log('WebSocket message received:', message);
             this.handleMessage(message);
-          } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
+          } catch {
+            console.error('Could not handle extraction WebSocket message');
           }
         };
 
         this.ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+          console.error('Extraction WebSocket error');
           this.isConnecting = false;
           this.emit('error', error);
           reject(error);
         };
 
         this.ws.onclose = (event) => {
-          console.log('WebSocket closed:', event.code, event.reason);
+          console.log('WebSocket closed:', event.code);
           this.isConnecting = false;
           this.emit('disconnected', { code: event.code, reason: event.reason });
 
@@ -100,7 +99,7 @@ class WebSocketService {
           }
         };
       } catch (error) {
-        console.error('Failed to create WebSocket connection:', error);
+        console.error('Failed to create extraction WebSocket connection');
         this.isConnecting = false;
         reject(error);
       }
@@ -136,7 +135,7 @@ class WebSocketService {
       if (this.sessionId) {
         // Note: Reconnection might fail if token is expired/missing in stored state
         // Ideal fix: Store token in class instance, but for now we rely on the caller to handle fresh tokens
-        this.connect(this.sessionId, getWsUrl(), this.userId, this.token).catch(console.error);
+        this.connect(this.sessionId, getWsUrl(), this.userId, this.token).catch(() => console.error('Extraction WebSocket reconnect failed'));
       }
     }, delay);
   }
@@ -162,13 +161,12 @@ class WebSocketService {
         : message;
 
       const jsonMessage = JSON.stringify(messageWithWebSearch);
-      console.log('[WS_SERVICE] Sending:', jsonMessage.substring(0, 300));
       console.log('[WS_SERVICE] 🔍 enable_web_search in this message:', messageWithWebSearch.enable_web_search);
       this.ws.send(jsonMessage);
       console.log('[WS_SERVICE] Message sent successfully!');
       return true;
-    } catch (error) {
-      console.error('[WS_SERVICE] Failed to send WebSocket message:', error);
+    } catch {
+      console.error('[WS_SERVICE] Failed to send WebSocket message');
       return false;
     }
   }
@@ -246,8 +244,6 @@ class WebSocketService {
 
       case 'streamRowData':
       case 'stream_row_data': // Legacy fallback
-        // ✅ DEBUG: Log every streamRowData received at WS service level
-        console.log('[WS_SERVICE] 📥 streamRowData received:', message.data?.column_name || message.column_name, '| file:', message.data?.file_name || message.file_name);
         // Emit full message as handleStreamRowData expects 'data.data' wrapper
         this.emit('streamRowData', message);
         break;
@@ -255,18 +251,15 @@ class WebSocketService {
 
 
       case 'debug':
-        console.log('[DEBUG FROM BACKEND]', message.message);
         this.emit('debug', message);
         break;
 
       case 'process_step':
-        console.log('[PROCESS STEP]', message.step, message.message);
         this.emit('process_step', message);
         break;
 
       // ✅ ADDED: Handle upload progress messages from backend
       case 'upload_progress':
-        console.log('[UPLOAD_PROGRESS]', message.status, message.message);
         this.emit('upload_progress', message);
         break;
 
@@ -305,23 +298,18 @@ class WebSocketService {
         break;
 
       case 'update_column':
-        console.log('[UPDATE_COLUMN] Received:', message);
         this.emit('update_column', message);
         break;
 
       case 'refine_column_start':
-        console.log('[REFINE_COLUMN_START] Received:', message);
         this.emit('refine_column_start', message);
         break;
 
       case 'delete_column':
-        console.log('[DELETE_COLUMN] Received:', message);
         this.emit('delete_column', message);
         break;
 
       case 'rename_column':
-        console.log('%c[WEBSOCKET.js] 🔄 rename_column MESSAGE PARSED 🔄', 'color: blue; font-size: 14px; font-weight: bold');
-        console.log('[WEBSOCKET.js] rename_column full message:', JSON.stringify(message, null, 2));
         this.emit('rename_column', message);
         break;
 
@@ -332,13 +320,11 @@ class WebSocketService {
 
       // ✅ NEW: Handle extraction_query (when backend starts processing a query)
       case 'extraction_query':
-        console.log('[EXTRACTION_QUERY] Received:', message);
         this.emit('extraction_query', message);
         break;
 
       // ✅ NEW: Handle extraction_targeting (tells frontend which rows/columns to animate)
       case 'extraction_targeting':
-        console.log('[EXTRACTION_TARGETING] Received:', message);
         this.emit('extraction_targeting', message);
         break;
 
@@ -355,7 +341,7 @@ class WebSocketService {
         break;
 
       default:
-        console.warn('Unknown message type:', type);
+        console.warn('Unknown extraction WebSocket message type');
         this.emit('message', message);
     }
   }
@@ -488,8 +474,8 @@ class WebSocketService {
     this.listeners.get(event).forEach(callback => {
       try {
         callback(data);
-      } catch (error) {
-        console.error(`Error in ${event} listener:`, error);
+      } catch {
+        console.error(`Error in ${event} listener`);
       }
     });
   }
@@ -510,7 +496,6 @@ class WebSocketService {
     const uid = userId || this.userId;  // ✅ Use provided or stored userId
 
     console.log('[WS_SERVICE] ensureConnected: Not connected, attempting reconnect...');
-    console.log('[WS_SERVICE] ensureConnected: sessionId provided:', sessionId, 'stored:', this.sessionId);
 
     if (sid) {
       try {
@@ -520,8 +505,8 @@ class WebSocketService {
         await this.connect(sid, getWsUrl(), uid, this.token);
         console.log('[WS_SERVICE] ensureConnected: Reconnected successfully!');
         return true;
-      } catch (error) {
-        console.error('[WS_SERVICE] ensureConnected: Reconnection failed:', error);
+      } catch {
+        console.error('[WS_SERVICE] ensureConnected: Reconnection failed');
         return false;
       }
     }
