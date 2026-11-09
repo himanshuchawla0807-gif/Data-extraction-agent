@@ -13,6 +13,18 @@ def normalize_text(value: str) -> str:
     return " ".join(str(value).split()).casefold()
 
 
+def _quote_contains_value(quote: str, value: str) -> bool:
+    # Word boundaries alone permit a fragment of a signed, decimal, or grouped
+    # number. Keep ordinary punctuation after a complete number valid.
+    left = r"(?<!\w)"
+    right = r"(?!\w)"
+    if value[0].isdecimal():
+        left += r"(?<![+\-−.])(?<!\d,)"
+    if value[-1].isdecimal():
+        right += r"(?![.,]\d)"
+    return re.search(left + re.escape(value) + right, quote) is not None
+
+
 def verify_payload(payload: object, documents: list[dict], fields: list[str]) -> list[dict]:
     """Evidence must be an exact normalized source quote, not a nearby keyword.
 
@@ -54,7 +66,11 @@ def verify_payload(payload: object, documents: list[dict], fields: list[str]) ->
             text = document.get("text") or ""
             if pages:
                 text = next((item["text"] for item in pages if item["page_number"] == page), "")
-            supported = bool(normalized_value and normalized_quote and normalized_quote in normalize_text(text) and re.search(r"(?<!\w)" + re.escape(normalized_value) + r"(?!\w)", normalized_quote))
+            supported = (
+                bool(normalized_value and normalized_quote)
+                and normalized_quote in normalize_text(text)
+                and _quote_contains_value(normalized_quote, normalized_value)
+            )
             row[field] = value if supported else "Not found"
             if supported:
                 row["__evidence__"][field] = {"source": "document", "filename": document["file_name"], "document_id": document_id, "excerpt": quote, "page_number": page, "verification": "exact_quote"}

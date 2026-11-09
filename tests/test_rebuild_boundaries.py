@@ -240,3 +240,28 @@ def test_text_evidence_does_not_claim_a_page_number():
     row = verify_payload(payload, documents, ["Revenue"])[0]
     assert row["Revenue"] == "12"
     assert row["__evidence__"]["Revenue"]["page_number"] is None
+
+
+@pytest.mark.parametrize("value,quote,supported", [
+    ("12", "Revenue is -12.", False),
+    ("12", "Revenue is +12.", False),
+    ("12", "Revenue is −12.", False),
+    ("12", "Revenue is 12.5.", False),
+    ("12", "Revenue is 12,500.", False),
+    ("500", "Revenue is 12,500.", False),
+    ("5", "Revenue is .5.", False),
+    ("-12", "Revenue is -12.", True),
+    ("12.5", "Revenue is 12.5.", True),
+    ("12", "Revenue is $12.", True),
+    ("12", "Revenue is (12 units).", True),
+    ("12", "Revenue was 12, according to the memo.", True),
+    ("North", "North-West region", True),
+])
+def test_numeric_evidence_matches_whole_quantities(value, quote, supported):
+    documents = [{"file_id": "report", "file_name": "report.txt", "text": quote}]
+    payload = {"rows": [{"document_id": "report", "cells": [
+        {"field": "Revenue", "value": value, "quote": quote}
+    ]}]}
+    row = verify_payload(payload, documents, ["Revenue"])[0]
+    assert row["Revenue"] == (value if supported else "Not found")
+    assert ("Revenue" in row["__evidence__"]) is supported
