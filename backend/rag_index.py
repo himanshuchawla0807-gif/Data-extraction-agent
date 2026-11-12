@@ -10,7 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
@@ -28,8 +30,21 @@ class LocalEmbeddingIndex:
 
     def ensure_index(self, session_id: str, file_id: str, display_name: str, text: str) -> Path:
         index_path = self._index_path(session_id, file_id)
+        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
         if index_path.exists():
-            return index_path
+            try:
+                cached = json.loads(index_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                cached = None
+            if (
+                isinstance(cached, dict)
+                and cached.get("text_hash") == text_hash
+                and cached.get("embedding_model") == self.model_name
+                and cached.get("dimensions") == self.dimensions
+                and cached.get("display_name") == display_name
+                and isinstance(cached.get("chunks"), list)
+            ):
+                return index_path
 
         chunks = self._chunk_text(text)
         records = []
@@ -44,10 +59,21 @@ class LocalEmbeddingIndex:
             "embedding_model": self.model_name,
             "dimensions": self.dimensions,
             "display_name": display_name,
+            "text_hash": text_hash,
             "chunks": records,
         }
         index_path.parent.mkdir(parents=True, exist_ok=True)
-        index_path.write_text(json.dumps(payload), encoding="utf-8")
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=index_path.parent, delete=False) as output:
+            temporary_path = Path(output.name)
+            try:
+                json.dump(payload, output)
+            except BaseException:
+                temporary_path.unlink(missing_ok=True)
+                raise
+        try:
+            os.replace(temporary_path, index_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
         return index_path
 
     def retrieve(self, index_path: Path, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
