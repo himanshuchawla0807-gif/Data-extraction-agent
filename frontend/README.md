@@ -118,7 +118,7 @@ const [state, dispatch] = useReducer(reducer, makeData(20)); // 20 initial rows
 
 ## 🐛 Debugging
 
-### View WebSocket Messages
+### Check the WebSocket Connection
 Open browser DevTools Console (F12):
 ```javascript
 // Check connection state
@@ -135,7 +135,9 @@ websocketService.send({ type: 'ping' })
 DevTools Network tab → Filter by "XHR"
 
 ### View WebSocket Traffic
-DevTools Network tab → Filter by "WS"
+The WebSocket service logs connection and event information without logging
+message bodies. To inspect frames with synthetic data, open the DevTools
+Network tab and filter by "WS".
 
 ## 📦 Dependencies
 

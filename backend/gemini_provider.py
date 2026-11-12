@@ -13,25 +13,44 @@ def normalize_text(value: str) -> str:
     return " ".join(str(value).split()).casefold()
 
 
-def verify_payload(payload: dict, documents: list[dict], fields: list[str]) -> list[dict]:
+def _quote_contains_value(quote: str, value: str) -> bool:
+    # Word boundaries alone permit a fragment of a signed, decimal, or grouped
+    # number. Keep ordinary punctuation after a complete number valid.
+    left = r"(?<!\w)"
+    right = r"(?!\w)"
+    if value[0].isdecimal():
+        left += r"(?<![+\-−.])(?<!\d,)"
+    if value[-1].isdecimal():
+        right += r"(?![.,]\d)"
+    return re.search(left + re.escape(value) + right, quote) is not None
+
+
+def verify_payload(payload: object, documents: list[dict], fields: list[str]) -> list[dict]:
     """Evidence must be an exact normalized source quote, not a nearby keyword.
 
     No confidence probability is invented: unsupported answers abstain. Derived
     and analytical values require a separate verified calculation/claim pipeline.
     """
+    if not isinstance(payload, dict) or not isinstance(payload.get("rows"), list):
+        raise ProviderError("Response must contain an array of rows")
     source = {doc["file_id"]: doc for doc in documents}
     results = []
     seen = set()
-    for raw in payload.get("rows", []):
-        if not isinstance(raw, dict) or raw.get("document_id") not in source:
+    for raw in payload["rows"]:
+        document_id = raw.get("document_id") if isinstance(raw, dict) else None
+        if not isinstance(document_id, str) or document_id not in source:
             raise ProviderError("Response references an unknown document")
-        document_id = raw["document_id"]
         if document_id in seen:
             raise ProviderError("Response duplicates a document")
         seen.add(document_id)
         document = source[document_id]
         row = {"Document Name": document["file_name"], "__evidence__": {}}
-        for cell in raw.get("cells", []):
+        cells = raw.get("cells")
+        if not isinstance(cells, list):
+            raise ProviderError("Response row must contain an array of cells")
+        for cell in cells:
+            if not isinstance(cell, dict):
+                raise ProviderError("Response cell must be an object")
             field = cell.get("field")
             if not isinstance(field, str) or field in {"Document Name", "__evidence__"} or (fields and field not in fields):
                 raise ProviderError("Response contains an unexpected field")
@@ -43,10 +62,15 @@ def verify_payload(payload: dict, documents: list[dict], fields: list[str]) -> l
             normalized_value, normalized_quote = normalize_text(value), normalize_text(quote)
             page = cell.get("page_number")
             pages = document.get("pages") or []
+            page = page if pages and type(page) is int and page > 0 else None
             text = document.get("text") or ""
             if pages:
                 text = next((item["text"] for item in pages if item["page_number"] == page), "")
-            supported = bool(normalized_value and normalized_quote and normalized_quote in normalize_text(text) and re.search(r"(?<!\w)" + re.escape(normalized_value) + r"(?!\w)", normalized_quote))
+            supported = (
+                bool(normalized_value and normalized_quote)
+                and normalized_quote in normalize_text(text)
+                and _quote_contains_value(normalized_quote, normalized_value)
+            )
             row[field] = value if supported else "Not found"
             if supported:
                 row["__evidence__"][field] = {"source": "document", "filename": document["file_name"], "document_id": document_id, "excerpt": quote, "page_number": page, "verification": "exact_quote"}

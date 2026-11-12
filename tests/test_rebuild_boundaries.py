@@ -204,3 +204,64 @@ def test_quote_verification_preserves_zero_but_rejects_blank_values(value, quote
     row = verify_payload(payload, documents, ["Errors"])[0]
     assert row["Errors"] == expected
     assert ("Errors" in row["__evidence__"]) is (expected == "0")
+
+
+@pytest.mark.parametrize("payload", [
+    None, [], {}, {"rows": {}}, {"rows": [None]},
+    {"rows": [{"document_id": [], "cells": []}]},
+    {"rows": [{"document_id": "report", "cells": {}}]},
+    {"rows": [{"document_id": "report", "cells": [None]}]},
+])
+def test_malformed_extraction_response_raises_provider_error(payload):
+    documents = [{"file_id": "report", "file_name": "report.txt", "text": "Revenue 12"}]
+    with pytest.raises(ProviderError):
+        verify_payload(payload, documents, [])
+
+
+@pytest.mark.parametrize("page,expected", [(True, "Not found"), (1.0, "Not found"), (1, "12")])
+def test_pdf_evidence_requires_an_integer_page(page, expected):
+    quote = "Revenue 12"
+    documents = [{"file_id": "report", "file_name": "report.pdf", "text": quote,
+                  "pages": [{"page_number": 1, "text": quote}]}]
+    payload = {"rows": [{"document_id": "report", "cells": [
+        {"field": "Revenue", "value": "12", "quote": quote, "page_number": page}
+    ]}]}
+    row = verify_payload(payload, documents, ["Revenue"])[0]
+    assert row["Revenue"] == expected
+    assert ("Revenue" in row["__evidence__"]) is (expected == "12")
+
+
+def test_text_evidence_does_not_claim_a_page_number():
+    quote = "Revenue 12"
+    documents = [{"file_id": "report", "file_name": "report.txt", "text": quote}]
+    payload = {"rows": [{"document_id": "report", "cells": [
+        {"field": "Revenue", "value": "12", "quote": quote, "page_number": 7}
+    ]}]}
+    row = verify_payload(payload, documents, ["Revenue"])[0]
+    assert row["Revenue"] == "12"
+    assert row["__evidence__"]["Revenue"]["page_number"] is None
+
+
+@pytest.mark.parametrize("value,quote,supported", [
+    ("12", "Revenue is -12.", False),
+    ("12", "Revenue is +12.", False),
+    ("12", "Revenue is −12.", False),
+    ("12", "Revenue is 12.5.", False),
+    ("12", "Revenue is 12,500.", False),
+    ("500", "Revenue is 12,500.", False),
+    ("5", "Revenue is .5.", False),
+    ("-12", "Revenue is -12.", True),
+    ("12.5", "Revenue is 12.5.", True),
+    ("12", "Revenue is $12.", True),
+    ("12", "Revenue is (12 units).", True),
+    ("12", "Revenue was 12, according to the memo.", True),
+    ("North", "North-West region", True),
+])
+def test_numeric_evidence_matches_whole_quantities(value, quote, supported):
+    documents = [{"file_id": "report", "file_name": "report.txt", "text": quote}]
+    payload = {"rows": [{"document_id": "report", "cells": [
+        {"field": "Revenue", "value": value, "quote": quote}
+    ]}]}
+    row = verify_payload(payload, documents, ["Revenue"])[0]
+    assert row["Revenue"] == (value if supported else "Not found")
+    assert ("Revenue" in row["__evidence__"]) is supported
